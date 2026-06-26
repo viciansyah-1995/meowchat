@@ -1,0 +1,10 @@
+{
+  "name": "MeowTrack Chat",
+  "short_name": "MeowChat",
+  "description": "Chat without phone number",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#00a884",
+  "icons": []
+}
