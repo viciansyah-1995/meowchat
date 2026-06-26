@@ -1,10 +1,16 @@
 {
-  "name": "MeowTrack Chat",
-  "short_name": "MeowChat",
-  "description": "Chat without phone number",
+  "name": "Database (Demo)",
+  "short_name": "Database",
+  "description": "Database (Demo)",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#00a884",
-  "icons": []
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
 }
