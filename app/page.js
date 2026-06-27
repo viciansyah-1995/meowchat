@@ -10,7 +10,11 @@ import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 
-const NAV_ITEMS = ['chats', 'contacts', 'profile'];
+const NAV_ITEMS = [
+  { key: 'chats', label: 'Chat', icon: '💬' },
+  { key: 'contacts', label: 'Contact', icon: '👥' },
+  { key: 'profile', label: 'Profile', icon: '⚙️' },
+];
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
 
 export default function MeowTrackChat() {
@@ -41,6 +45,8 @@ export default function MeowTrackChat() {
   const [isTabLoading, setIsTabLoading] = useState(false);
   const [isChatOpening, setIsChatOpening] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
   const clearFeedback = () => {
     setErrorMessage('');
@@ -163,6 +169,29 @@ export default function MeowTrackChat() {
       }
     }
 
+    const installDismissed = window.localStorage.getItem('database_demo_install_prompt_dismissed');
+
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event);
+      if (!installDismissed) {
+        setShowInstallPrompt(true);
+      }
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPromptEvent(null);
+      setShowInstallPrompt(false);
+      window.localStorage.setItem('database_demo_install_prompt_dismissed', 'installed');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    if (!installDismissed && window.matchMedia('(display-mode: browser)').matches) {
+      setShowInstallPrompt(true);
+    }
+
     loadSessionAndProfile();
 
     const { data } = SupabaseAuthService.onAuthStateChange(async (_event, session) => {
@@ -189,6 +218,8 @@ export default function MeowTrackChat() {
     });
 
     return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
       data?.subscription?.unsubscribe();
       if (chatChannel) {
         SupabaseChatService.unsubscribe(chatChannel);
@@ -326,6 +357,26 @@ export default function MeowTrackChat() {
     await loadContacts();
   };
 
+  const handleInstallApp = async () => {
+    if (installPromptEvent) {
+      installPromptEvent.prompt();
+      const choice = await installPromptEvent.userChoice;
+      if (choice.outcome === 'accepted') {
+        setSuccessMessage('Install app dimulai');
+        setShowInstallPrompt(false);
+      }
+      setInstallPromptEvent(null);
+      return;
+    }
+
+    setSuccessMessage('Kalau tombol install browser belum muncul, buka menu browser lalu pilih Add to Home Screen atau Install App.');
+  };
+
+  const dismissInstallPrompt = () => {
+    setShowInstallPrompt(false);
+    window.localStorage.setItem('database_demo_install_prompt_dismissed', 'true');
+  };
+
   const loadChatReadMap = async (chatId) => {
     const result = await InboxService.getReadStatusMap(chatId);
     if (result.success) {
@@ -446,10 +497,29 @@ export default function MeowTrackChat() {
     </>
   );
 
+  const renderInstallPrompt = () => {
+    if (!(screen === 'login' || screen === 'register') || !showInstallPrompt) return null;
+
+    return (
+      <div className="install-prompt-card">
+        <div className="install-prompt-copy">
+          <div className="install-prompt-badge">PWA</div>
+          <h3>Install Database App</h3>
+          <p>Buka lebih cepat seperti aplikasi mobile langsung dari home screen.</p>
+        </div>
+        <div className="install-prompt-actions">
+          <button type="button" className="btn btn-secondary install-prompt-secondary" onClick={dismissInstallPrompt}>Nanti</button>
+          <button type="button" className="btn btn-primary install-prompt-primary" onClick={handleInstallApp}>{installPromptEvent ? 'Install Sekarang' : 'Lihat Cara Install'}</button>
+        </div>
+      </div>
+    );
+  };
+
   const renderLogin = () => (
     <div className={`screen ${screen === 'login' ? 'active' : ''}`} id="login-screen">
       <div className="auth-container">
         <div className="auth-logo"><h2>Database (Demo)</h2></div>
+        {renderInstallPrompt()}
         <Feedback />
         <form className="auth-form" onSubmit={handleLogin}>
           <div className="input-group">
@@ -471,6 +541,7 @@ export default function MeowTrackChat() {
     <div className={`screen ${screen === 'register' ? 'active' : ''}`} id="register-screen">
       <div className="auth-container">
         <div className="auth-logo"><h2>Database (Demo)</h2></div>
+        {renderInstallPrompt()}
         <Feedback />
         <form className="auth-form" onSubmit={handleRegister}>
           <div className="input-group"><label>Email</label><input type="email" value={registerForm.email} onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })} placeholder="email@contoh.com" /></div>
@@ -580,17 +651,22 @@ export default function MeowTrackChat() {
 
   const renderAppHome = () => (
     <div className={`screen ${screen === 'app' ? 'active' : ''}`} id="app-screen">
-      <div className="header"><h1>Database (Demo)</h1></div>
-      <Feedback />
-      {activeTab === 'chats' && renderChatsTab()}
-      {activeTab === 'contacts' && renderContactsTab()}
-      {activeTab === 'profile' && renderProfileTab()}
-      <div className="bottom-nav">
-        {NAV_ITEMS.map((item) => (
-          <button key={item} className={`bottom-nav-item ${activeTab === item ? 'active' : ''}`} onClick={() => setActiveTab(item)}>
-            <span className="bottom-nav-label">{item === 'chats' ? 'Chat' : item === 'contacts' ? 'Contact' : 'Profile'}</span>
-          </button>
-        ))}
+      <div className="mobile-app-shell">
+        <div className="header mobile-header"><h1>Database (Demo)</h1></div>
+        <Feedback />
+        <div className="app-scroll-area">
+          {activeTab === 'chats' && renderChatsTab()}
+          {activeTab === 'contacts' && renderContactsTab()}
+          {activeTab === 'profile' && renderProfileTab()}
+        </div>
+        <div className="bottom-nav mobile-bottom-nav">
+          {NAV_ITEMS.map((item) => (
+            <button key={item.key} className={`bottom-nav-item ${activeTab === item.key ? 'active' : ''}`} onClick={() => setActiveTab(item.key)}>
+              <span className="bottom-nav-icon" aria-hidden="true">{item.icon}</span>
+              <span className="bottom-nav-label">{item.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
