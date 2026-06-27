@@ -31,6 +31,7 @@ export default function MeowTrackChat() {
   const [inboxItems, setInboxItems] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [messageReadMap, setMessageReadMap] = useState({});
   const [messageInput, setMessageInput] = useState('');
   const [chatChannel, setChatChannel] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
@@ -68,6 +69,28 @@ export default function MeowTrackChat() {
     }
   };
 
+  const hydrateAppShell = async (profile) => {
+    setCurrentProfile(profile);
+    setProfileForm({
+      username: profile.username || '',
+      displayName: profile.display_name || '',
+      bio: profile.bio || '',
+    });
+    setScreen('app');
+    setActiveTab('chats');
+    setDebugInfo((prev) => `${prev}\nprofile => ${JSON.stringify(profile)}`);
+
+    setTimeout(() => {
+      loadContacts().catch((error) => {
+        setDebugInfo((prev) => `${prev}\nloadContacts async error => ${error.message || JSON.stringify(error)}`);
+      });
+
+      loadInbox().catch((error) => {
+        setDebugInfo((prev) => `${prev}\nloadInbox async error => ${error.message || JSON.stringify(error)}`);
+      });
+    }, 0);
+  };
+
   const loadSessionAndProfile = async () => {
     try {
       setIsBootLoading(true);
@@ -95,16 +118,7 @@ export default function MeowTrackChat() {
       }
 
       if (profileResult.success) {
-        setCurrentProfile(profileResult.data);
-        setProfileForm({
-          username: profileResult.data.username || '',
-          displayName: profileResult.data.display_name || '',
-          bio: profileResult.data.bio || '',
-        });
-        setScreen('app');
-        setActiveTab('chats');
-        setDebugInfo((prev) => `${prev}\nprofile => ${JSON.stringify(profileResult.data)}`);
-        await Promise.all([loadContacts(), loadInbox()]);
+        await hydrateAppShell(profileResult.data);
       } else {
         setErrorMessage(profileResult.error?.message || 'Gagal mengambil profile');
         setDebugInfo((prev) => `${prev}\nprofile error => ${JSON.stringify(profileResult.error)}`);
@@ -145,14 +159,7 @@ export default function MeowTrackChat() {
           profileResult = await ProfileService.getMyProfile();
         }
         if (profileResult.success) {
-          setCurrentProfile(profileResult.data);
-          setProfileForm({
-            username: profileResult.data.username || '',
-            displayName: profileResult.data.display_name || '',
-            bio: profileResult.data.bio || '',
-          });
-          setScreen('app');
-          await Promise.all([loadContacts(), loadInbox()]);
+          await hydrateAppShell(profileResult.data);
         }
       } else {
         setCurrentUser(null);
@@ -300,6 +307,13 @@ export default function MeowTrackChat() {
     await loadContacts();
   };
 
+  const loadChatReadMap = async (chatId) => {
+    const result = await InboxService.getReadStatusMap(chatId);
+    if (result.success) {
+      setMessageReadMap(result.data || {});
+    }
+  };
+
   const openDirectChat = async (profile) => {
     clearFeedback();
     setIsChatOpening(true);
@@ -332,6 +346,7 @@ export default function MeowTrackChat() {
 
     await InboxService.markChatAsRead(chat.id);
     await loadInbox();
+    await loadChatReadMap(chat.id);
 
     if (chatChannel) {
       SupabaseChatService.unsubscribe(chatChannel);
@@ -347,6 +362,7 @@ export default function MeowTrackChat() {
       setDebugInfo((prev) => `${prev}\nrealtime message received => ${newMessage.id}`);
       await InboxService.markChatAsRead(chat.id);
       await loadInbox();
+      await loadChatReadMap(chat.id);
     });
 
     setChatChannel(channel);
@@ -373,6 +389,7 @@ export default function MeowTrackChat() {
       setDebugInfo(`message sent => ${JSON.stringify(result.data)}`);
       setMessageInput('');
       await loadInbox();
+      await loadChatReadMap(activeChat.chat.id);
     } finally {
       setIsSendingMessage(false);
     }
@@ -555,7 +572,7 @@ export default function MeowTrackChat() {
     <div className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen">
       <div className="chat-container">
         <div className="chat-header">
-          <button className="chat-back" onClick={async () => { setScreen('app'); setActiveTab('chats'); setActiveChat(null); clearFeedback(); await loadInbox(); }}>←</button>
+          <button className="chat-back" onClick={async () => { setScreen('app'); setActiveTab('chats'); setActiveChat(null); clearFeedback(); setMessageReadMap({}); await loadInbox(); }}>←</button>
           <div className="chat-contact-info">
             <h3>{activeChatTitle}</h3>
             <p>@{activeChat?.otherProfile?.username}</p>
@@ -566,10 +583,12 @@ export default function MeowTrackChat() {
           {isChatOpening ? <div className="skeleton-chat">{Array.from({ length: 5 }).map((_, i) => <div key={i} className={`skeleton-bubble ${i % 2 === 0 ? 'left' : 'right'}`} />)}</div> : messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>Kirim pesan untuk memulai percakapan</p></div> : (
             messages.map((msg) => {
               const isOwn = msg.sender_id === currentUser?.id;
+              const reads = messageReadMap[msg.id] || [];
+              const readByOther = reads.some((r) => r.profile_id !== currentUser?.id);
               return (
                 <div key={msg.id} className={`message ${isOwn ? 'message-own' : 'message-other'}`}>
                   {msg.content && <p>{msg.content}</p>}
-                  <div className="message-time">{formatTime(new Date(msg.created_at).getTime())}</div>
+                  <div className="message-time">{formatTime(new Date(msg.created_at).getTime())}{isOwn ? ` · ${readByOther ? 'Read' : 'Sent'}` : ''}</div>
                 </div>
               );
             })
