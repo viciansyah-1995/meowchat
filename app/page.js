@@ -8,6 +8,7 @@ import SupabaseContactService from '../lib/services/contact.service.supabase.js'
 import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
+import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 
 const NAV_ITEMS = ['chats', 'contacts', 'profile'];
 
@@ -32,6 +33,7 @@ export default function MeowTrackChat() {
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [chatChannel, setChatChannel] = useState(null);
+  const [envDiagnostic, setEnvDiagnostic] = useState(null);
 
   const clearFeedback = () => {
     setErrorMessage('');
@@ -108,6 +110,22 @@ export default function MeowTrackChat() {
   };
 
   useEffect(() => {
+    try {
+      const envStatus = getSupabaseEnvStatus();
+      setEnvDiagnostic(envStatus);
+      setDebugInfo((prev) => {
+        const lines = [
+          `env.hasUrl=${envStatus.hasUrl}`,
+          `env.hasAnonKey=${envStatus.hasAnonKey}`,
+          `env.urlHost=${envStatus.urlHost || 'null'}`,
+          `env.anonKeyPrefix=${envStatus.anonKeyPrefix || 'null'}`,
+        ];
+        return prev ? `${lines.join('\n')}\n${prev}` : lines.join('\n');
+      });
+    } catch (error) {
+      setDebugInfo((prev) => prev ? `envDiagnostic.error=${error.message}\n${prev}` : `envDiagnostic.error=${error.message}`);
+    }
+
     loadSessionAndProfile();
 
     const { data } = SupabaseAuthService.onAuthStateChange(async (_event, session) => {
@@ -342,6 +360,15 @@ export default function MeowTrackChat() {
     <>
       {errorMessage && <div className="error-message">{errorMessage}</div>}
       {successMessage && <div className="success-message">{successMessage}</div>}
+      {envDiagnostic && (
+        <div className="success-message" style={{ textAlign: 'left' }}>
+          <div><strong>Env Diagnostic</strong></div>
+          <div>URL present: {String(envDiagnostic.hasUrl)}</div>
+          <div>Anon key present: {String(envDiagnostic.hasAnonKey)}</div>
+          <div>URL host: {envDiagnostic.urlHost || 'null'}</div>
+          <div>Key prefix: {envDiagnostic.anonKeyPrefix || 'null'}</div>
+        </div>
+      )}
       {debugInfo && <pre className="debug-panel">{debugInfo}</pre>}
     </>
   );
