@@ -11,6 +11,7 @@ import { formatTime } from '../lib/utils/index.js';
 import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 
 const NAV_ITEMS = ['chats', 'contacts', 'profile'];
+const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
 
 export default function MeowTrackChat() {
   const [screen, setScreen] = useState('login');
@@ -78,15 +79,21 @@ export default function MeowTrackChat() {
     });
     setScreen('app');
     setActiveTab('chats');
-    setDebugInfo((prev) => `${prev}\nprofile => ${JSON.stringify(profile)}`);
+    if (IS_DEBUG_MODE) {
+      setDebugInfo((prev) => `${prev}\nprofile => ${JSON.stringify(profile)}`);
+    }
 
     setTimeout(() => {
       loadContacts().catch((error) => {
-        setDebugInfo((prev) => `${prev}\nloadContacts async error => ${error.message || JSON.stringify(error)}`);
+        if (IS_DEBUG_MODE) {
+          setDebugInfo((prev) => `${prev}\nloadContacts async error => ${error.message || JSON.stringify(error)}`);
+        }
       });
 
       loadInbox().catch((error) => {
-        setDebugInfo((prev) => `${prev}\nloadInbox async error => ${error.message || JSON.stringify(error)}`);
+        if (IS_DEBUG_MODE) {
+          setDebugInfo((prev) => `${prev}\nloadInbox async error => ${error.message || JSON.stringify(error)}`);
+        }
       });
     }, 0);
   };
@@ -109,7 +116,9 @@ export default function MeowTrackChat() {
       }
 
       setCurrentUser(session.user);
-      setDebugInfo(`session user => ${session.user.email}`);
+      if (IS_DEBUG_MODE) {
+        setDebugInfo(`session user => ${session.user.email}`);
+      }
 
       let profileResult = await ProfileService.getMyProfile();
       if (!profileResult.success) {
@@ -121,31 +130,37 @@ export default function MeowTrackChat() {
         await hydrateAppShell(profileResult.data);
       } else {
         setErrorMessage(profileResult.error?.message || 'Gagal mengambil profile');
-        setDebugInfo((prev) => `${prev}\nprofile error => ${JSON.stringify(profileResult.error)}`);
+        if (IS_DEBUG_MODE) {
+          setDebugInfo((prev) => `${prev}\nprofile error => ${JSON.stringify(profileResult.error)}`);
+        }
       }
     } catch (error) {
       setErrorMessage(`Init exception: ${error.message}`);
-      setDebugInfo(`init exception => ${error.stack || error.message}`);
+      if (IS_DEBUG_MODE) {
+        setDebugInfo(`init exception => ${error.stack || error.message}`);
+      }
     } finally {
       setIsBootLoading(false);
     }
   };
 
   useEffect(() => {
-    try {
-      const envStatus = getSupabaseEnvStatus();
-      setEnvDiagnostic(envStatus);
-      setDebugInfo((prev) => {
-        const lines = [
-          `env.hasUrl=${envStatus.hasUrl}`,
-          `env.hasAnonKey=${envStatus.hasAnonKey}`,
-          `env.urlHost=${envStatus.urlHost || 'null'}`,
-          `env.anonKeyPrefix=${envStatus.anonKeyPrefix || 'null'}`,
-        ];
-        return prev ? `${lines.join('\n')}\n${prev}` : lines.join('\n');
-      });
-    } catch (error) {
-      setDebugInfo((prev) => prev ? `envDiagnostic.error=${error.message}\n${prev}` : `envDiagnostic.error=${error.message}`);
+    if (IS_DEBUG_MODE) {
+      try {
+        const envStatus = getSupabaseEnvStatus();
+        setEnvDiagnostic(envStatus);
+        setDebugInfo((prev) => {
+          const lines = [
+            `env.hasUrl=${envStatus.hasUrl}`,
+            `env.hasAnonKey=${envStatus.hasAnonKey}`,
+            `env.urlHost=${envStatus.urlHost || 'null'}`,
+            `env.anonKeyPrefix=${envStatus.anonKeyPrefix || 'null'}`,
+          ];
+          return prev ? `${lines.join('\n')}\n${prev}` : lines.join('\n');
+        });
+      } catch (error) {
+        setDebugInfo((prev) => prev ? `envDiagnostic.error=${error.message}\n${prev}` : `envDiagnostic.error=${error.message}`);
+      }
     }
 
     loadSessionAndProfile();
@@ -193,7 +208,9 @@ export default function MeowTrackChat() {
         displayName: registerForm.displayName.trim(),
       });
 
-      setDebugInfo(`register => ${JSON.stringify(result.success ? { success: true, user: result.data?.user?.email } : { success: false, error: result.error?.message })}`);
+      if (IS_DEBUG_MODE) {
+        setDebugInfo(`register => ${JSON.stringify(result.success ? { success: true, user: result.data?.user?.email } : { success: false, error: result.error?.message })}`);
+      }
       if (!result.success) {
         setErrorMessage(result.error?.message || 'Register gagal');
         return;
@@ -219,7 +236,9 @@ export default function MeowTrackChat() {
         password: loginForm.password,
       });
 
-      setDebugInfo(`login => ${JSON.stringify(result.success ? { success: true, user: result.data?.user?.email } : { success: false, error: result.error?.message })}`);
+      if (IS_DEBUG_MODE) {
+        setDebugInfo(`login => ${JSON.stringify(result.success ? { success: true, user: result.data?.user?.email } : { success: false, error: result.error?.message })}`);
+      }
       if (!result.success) {
         setErrorMessage(result.error?.message || 'Login gagal');
         return;
@@ -329,7 +348,7 @@ export default function MeowTrackChat() {
     const chatResult = await SupabaseChatService.getOrCreateDirectChat(profile.id);
     if (!chatResult.success) {
       setErrorMessage(chatResult.error?.message || 'Gagal membuka direct chat');
-      if (chatResult.debug) setDebugInfo(chatResult.debug.join('\n'));
+      if (chatResult.debug && IS_DEBUG_MODE) setDebugInfo(chatResult.debug.join('\n'));
       setIsChatOpening(false);
       return;
     }
@@ -339,7 +358,9 @@ export default function MeowTrackChat() {
     const messagesResult = await SupabaseChatService.getMessages(chat.id);
     if (!messagesResult.success) {
       setErrorMessage(messagesResult.error?.message || 'Gagal load messages');
-      setDebugInfo((prev) => `${prev}\nmessagesResult.error => ${JSON.stringify(messagesResult.error)}`);
+      if (IS_DEBUG_MODE) {
+        setDebugInfo((prev) => `${prev}\nmessagesResult.error => ${JSON.stringify(messagesResult.error)}`);
+      }
       setIsChatOpening(false);
       return;
     }
@@ -353,13 +374,15 @@ export default function MeowTrackChat() {
       setChatChannel(null);
     }
 
-    const channel = SupabaseChatService.subscribeMessages(chat.id, async (newMessage) => {
+    const channel = SupabaseChatService.subscribeMessages(`chat:${chat.id}:${Date.now()}`, chat.id, async (newMessage) => {
       setMessages((prev) => {
         const exists = prev.some((msg) => msg.id === newMessage.id);
         if (exists) return prev;
         return [...prev, newMessage];
       });
-      setDebugInfo((prev) => `${prev}\nrealtime message received => ${newMessage.id}`);
+      if (IS_DEBUG_MODE) {
+        setDebugInfo((prev) => `${prev}\nrealtime message received => ${newMessage.id}`);
+      }
       await InboxService.markChatAsRead(chat.id);
       await loadInbox();
       await loadChatReadMap(chat.id);
@@ -369,7 +392,9 @@ export default function MeowTrackChat() {
     setActiveChat({ chat, otherProfile: profile });
     setMessages(messagesResult.data || []);
     setScreen('chat');
-    setDebugInfo((prev) => `${prev}\nchat ready => ${chat.id}\nmessageCount => ${(messagesResult.data || []).length}`);
+    if (IS_DEBUG_MODE) {
+      setDebugInfo((prev) => `${prev}\nchat ready => ${chat.id}\nmessageCount => ${(messagesResult.data || []).length}`);
+    }
     setSuccessMessage(chatResult.created ? 'Direct chat baru dibuat' : 'Direct chat dibuka');
     setIsChatOpening(false);
   };
@@ -386,7 +411,9 @@ export default function MeowTrackChat() {
         return;
       }
 
-      setDebugInfo(`message sent => ${JSON.stringify(result.data)}`);
+      if (IS_DEBUG_MODE) {
+        setDebugInfo(`message sent => ${JSON.stringify(result.data)}`);
+      }
       setMessageInput('');
       await loadInbox();
       await loadChatReadMap(activeChat.chat.id);
@@ -406,7 +433,7 @@ export default function MeowTrackChat() {
     <>
       {errorMessage && <div className="error-message">{errorMessage}</div>}
       {successMessage && <div className="success-message">{successMessage}</div>}
-      {envDiagnostic && (
+      {IS_DEBUG_MODE && envDiagnostic && (
         <div className="success-message" style={{ textAlign: 'left' }}>
           <div><strong>Env Diagnostic</strong></div>
           <div>URL present: {String(envDiagnostic.hasUrl)}</div>
@@ -415,7 +442,7 @@ export default function MeowTrackChat() {
           <div>Key prefix: {envDiagnostic.anonKeyPrefix || 'null'}</div>
         </div>
       )}
-      {debugInfo && <pre className="debug-panel">{debugInfo}</pre>}
+      {IS_DEBUG_MODE && debugInfo && <pre className="debug-panel">{debugInfo}</pre>}
     </>
   );
 
