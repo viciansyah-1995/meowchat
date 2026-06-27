@@ -78,4 +78,62 @@ body { background: linear-gradient(180deg, #f7f9ff 0%, #eef3ff 100%); color: var
 .bottom-nav-item { border: none; background: transparent; padding: 14px 8px; cursor: pointer; color: var(--text-secondary); font-family: var(--font-main); font-weight: 600; }
 .bottom-nav-item.active { color: var(--accent-dark); background: rgba(66, 116, 217, 0.08); }
 .bottom-nav-label { font-size: 14px; }
+
+.btn:disabled,
+.chat-btn-send:disabled,
+.bottom-nav-item:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.skeleton-item,
+.skeleton-bubble {
+  position: relative;
+  overflow: hidden;
+  background: #e8edf9;
+}
+
+.skeleton-item {
+  height: 72px;
+  border-radius: 16px;
+  margin: 0 16px;
+}
+
+.skeleton-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-bubble {
+  height: 52px;
+  border-radius: 14px;
+  width: 72%;
+}
+
+.skeleton-bubble.left { align-self: flex-start; }
+.skeleton-bubble.right { align-self: flex-end; width: 60%; }
+
+.skeleton-item::after,
+.skeleton-bubble::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.65), transparent);
+  animation: shimmer 1.35s infinite;
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
 .hidden { display: none !important; }

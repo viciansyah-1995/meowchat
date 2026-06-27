@@ -34,6 +34,11 @@ export default function MeowTrackChat() {
   const [messageInput, setMessageInput] = useState('');
   const [chatChannel, setChatChannel] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
+  const [isBootLoading, setIsBootLoading] = useState(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isTabLoading, setIsTabLoading] = useState(false);
+  const [isChatOpening, setIsChatOpening] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   const clearFeedback = () => {
     setErrorMessage('');
@@ -65,6 +70,7 @@ export default function MeowTrackChat() {
 
   const loadSessionAndProfile = async () => {
     try {
+      setIsBootLoading(true);
       const sessionResult = await SupabaseAuthService.getSession();
       if (!sessionResult.success) {
         setErrorMessage(sessionResult.error?.message || 'Gagal mengambil session');
@@ -106,6 +112,8 @@ export default function MeowTrackChat() {
     } catch (error) {
       setErrorMessage(`Init exception: ${error.message}`);
       setDebugInfo(`init exception => ${error.stack || error.message}`);
+    } finally {
+      setIsBootLoading(false);
     }
   };
 
@@ -169,6 +177,7 @@ export default function MeowTrackChat() {
   const handleRegister = async (e) => {
     e.preventDefault();
     clearFeedback();
+    setIsAuthLoading(true);
     try {
       const result = await SupabaseAuthService.signUp({
         email: registerForm.email.trim(),
@@ -188,12 +197,15 @@ export default function MeowTrackChat() {
       await loadSessionAndProfile();
     } catch (error) {
       setErrorMessage(`Register exception: ${error.message}`);
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     clearFeedback();
+    setIsAuthLoading(true);
     try {
       const result = await SupabaseAuthService.signIn({
         email: loginForm.email.trim(),
@@ -211,6 +223,8 @@ export default function MeowTrackChat() {
       await loadSessionAndProfile();
     } catch (error) {
       setErrorMessage(`Login exception: ${error.message}`);
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -254,20 +268,25 @@ export default function MeowTrackChat() {
 
   const handleSearchUser = async () => {
     clearFeedback();
+    setIsTabLoading(true);
     if (!searchQuery.trim()) {
       setSearchResults([]);
       return;
     }
 
-    const result = await ProfileService.searchProfiles(searchQuery.trim());
-    if (!result.success) {
-      setErrorMessage(result.error?.message || 'Gagal mencari user');
-      return;
-    }
+    try {
+      const result = await ProfileService.searchProfiles(searchQuery.trim());
+      if (!result.success) {
+        setErrorMessage(result.error?.message || 'Gagal mencari user');
+        return;
+      }
 
-    const filtered = (result.data || []).filter((profile) => profile.id !== currentProfile?.id);
-    setSearchResults(filtered);
-    setDebugInfo(`search results => ${filtered.length}`);
+      const filtered = (result.data || []).filter((profile) => profile.id !== currentProfile?.id);
+      setSearchResults(filtered);
+      setDebugInfo(`search results => ${filtered.length}`);
+    } finally {
+      setIsTabLoading(false);
+    }
   };
 
   const handleAddContact = async (profile) => {
@@ -283,11 +302,13 @@ export default function MeowTrackChat() {
 
   const openDirectChat = async (profile) => {
     clearFeedback();
+    setIsChatOpening(true);
     setDebugInfo('openDirectChat() start');
 
     if (!profile || !profile.id) {
       setErrorMessage('Profile tujuan tidak valid atau belum bisa dibaca dari data saat ini');
       setDebugInfo((prev) => `${prev}\ninvalid profile payload => ${JSON.stringify(profile)}`);
+      setIsChatOpening(false);
       return;
     }
 
@@ -295,6 +316,7 @@ export default function MeowTrackChat() {
     if (!chatResult.success) {
       setErrorMessage(chatResult.error?.message || 'Gagal membuka direct chat');
       if (chatResult.debug) setDebugInfo(chatResult.debug.join('\n'));
+      setIsChatOpening(false);
       return;
     }
     if (chatResult.debug) setDebugInfo(chatResult.debug.join('\n'));
@@ -304,6 +326,7 @@ export default function MeowTrackChat() {
     if (!messagesResult.success) {
       setErrorMessage(messagesResult.error?.message || 'Gagal load messages');
       setDebugInfo((prev) => `${prev}\nmessagesResult.error => ${JSON.stringify(messagesResult.error)}`);
+      setIsChatOpening(false);
       return;
     }
 
@@ -332,21 +355,27 @@ export default function MeowTrackChat() {
     setScreen('chat');
     setDebugInfo((prev) => `${prev}\nchat ready => ${chat.id}\nmessageCount => ${(messagesResult.data || []).length}`);
     setSuccessMessage(chatResult.created ? 'Direct chat baru dibuat' : 'Direct chat dibuka');
+    setIsChatOpening(false);
   };
 
   const handleSendMessage = async () => {
     clearFeedback();
-    if (!activeChat?.chat?.id || !messageInput.trim()) return;
+    if (!activeChat?.chat?.id || !messageInput.trim() || isSendingMessage) return;
 
-    const result = await SupabaseChatService.sendTextMessage(activeChat.chat.id, messageInput.trim());
-    if (!result.success) {
-      setErrorMessage(result.error?.message || 'Gagal kirim pesan');
-      return;
+    setIsSendingMessage(true);
+    try {
+      const result = await SupabaseChatService.sendTextMessage(activeChat.chat.id, messageInput.trim());
+      if (!result.success) {
+        setErrorMessage(result.error?.message || 'Gagal kirim pesan');
+        return;
+      }
+
+      setDebugInfo(`message sent => ${JSON.stringify(result.data)}`);
+      setMessageInput('');
+      await loadInbox();
+    } finally {
+      setIsSendingMessage(false);
     }
-
-    setDebugInfo(`message sent => ${JSON.stringify(result.data)}`);
-    setMessageInput('');
-    await loadInbox();
   };
 
   const handleComposerKeyDown = async (e) => {
@@ -387,7 +416,7 @@ export default function MeowTrackChat() {
             <label>Password</label>
             <input type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="Masukkan password" />
           </div>
-          <button type="submit" className="btn btn-primary">Masuk</button>
+          <button type="submit" className="btn btn-primary" disabled={isAuthLoading}>{isAuthLoading ? 'Loading...' : 'Masuk'}</button>
         </form>
         <div className="auth-footer">Belum punya akun? <a href="#" onClick={(e) => { e.preventDefault(); setScreen('register'); clearFeedback(); }}>Daftar</a></div>
       </div>
@@ -404,7 +433,7 @@ export default function MeowTrackChat() {
           <div className="input-group"><label>Username</label><input type="text" value={registerForm.username} onChange={(e) => setRegisterForm({ ...registerForm, username: e.target.value })} placeholder="Pilih username" /></div>
           <div className="input-group"><label>Nama Tampilan</label><input type="text" value={registerForm.displayName} onChange={(e) => setRegisterForm({ ...registerForm, displayName: e.target.value })} placeholder="Nama yang ditampilkan" /></div>
           <div className="input-group"><label>Password</label><input type="password" value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })} placeholder="Minimal 6 karakter" /></div>
-          <button type="submit" className="btn btn-primary">Daftar</button>
+          <button type="submit" className="btn btn-primary" disabled={isAuthLoading}>{isAuthLoading ? 'Loading...' : 'Daftar'}</button>
         </form>
         <div className="auth-footer">Sudah punya akun? <a href="#" onClick={(e) => { e.preventDefault(); setScreen('login'); clearFeedback(); }}>Masuk</a></div>
       </div>
@@ -415,7 +444,9 @@ export default function MeowTrackChat() {
     <>
       <div className="contacts-header">
         <h3 style={{ marginBottom: 12 }}>Chats</h3>
-        {inboxItems.length === 0 ? (
+        {isTabLoading ? (
+          <div className="skeleton-list">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div>
+        ) : inboxItems.length === 0 ? (
           <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada percakapan</p></div>
         ) : (
           <div className="contacts-list">
@@ -449,7 +480,7 @@ export default function MeowTrackChat() {
       <div style={{ padding: '0 16px 16px' }}><button className="btn btn-primary" style={{ width: '100%' }} onClick={handleSearchUser}>Cari User</button></div>
       <div className="contacts-header" style={{ paddingTop: 0 }}>
         <h3 style={{ marginBottom: 12 }}>Hasil Pencarian</h3>
-        {searchResults.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada hasil pencarian</p></div> : (
+        {isTabLoading ? <div className="skeleton-list">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div> : searchResults.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada hasil pencarian</p></div> : (
           <div className="contacts-list">
             {searchResults.map((profile) => (
               <div key={profile.id} className="contact-item" style={{ cursor: 'default' }}>
@@ -469,7 +500,7 @@ export default function MeowTrackChat() {
       </div>
       <div className="contacts-header" style={{ paddingTop: 0 }}>
         <h3 style={{ marginBottom: 12 }}>Kontak Saya</h3>
-        {contacts.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada kontak</p></div> : (
+        {isTabLoading ? <div className="skeleton-list">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div> : contacts.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada kontak</p></div> : (
           <div className="contacts-list">
             {contacts.map((contact) => {
               const profile = contact.contact_profile;
@@ -532,7 +563,7 @@ export default function MeowTrackChat() {
         </div>
         <Feedback />
         <div className="chat-messages">
-          {messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>Kirim pesan untuk memulai percakapan</p></div> : (
+          {isChatOpening ? <div className="skeleton-chat">{Array.from({ length: 5 }).map((_, i) => <div key={i} className={`skeleton-bubble ${i % 2 === 0 ? 'left' : 'right'}`} />)}</div> : messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>Kirim pesan untuk memulai percakapan</p></div> : (
             messages.map((msg) => {
               const isOwn = msg.sender_id === currentUser?.id;
               return (
@@ -546,7 +577,7 @@ export default function MeowTrackChat() {
         </div>
         <div className="chat-input-area">
           <textarea className="composer-textarea" rows={1} placeholder="Ketik pesan..." value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
-          <button className="chat-btn chat-btn-send" onClick={handleSendMessage}>➤</button>
+          <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
         </div>
       </div>
     </div>
