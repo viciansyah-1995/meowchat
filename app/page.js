@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import SupabaseAuthService from '../lib/services/supabase-auth.service.js';
 import ProfileService from '../lib/services/profile.service.js';
 import ProfileEditService from '../lib/services/profile-edit.service.supabase.js';
@@ -44,10 +44,12 @@ export default function MeowTrackChat() {
   const [isBootLoading, setIsBootLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isTabLoading, setIsTabLoading] = useState(false);
+  const [isInboxLoading, setIsInboxLoading] = useState(false);
   const [isChatOpening, setIsChatOpening] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const chatMessagesRef = useRef(null);
 
   const clearFeedback = () => {
     setErrorMessage('');
@@ -69,11 +71,16 @@ export default function MeowTrackChat() {
   };
 
   const loadInbox = async () => {
-    const result = await InboxService.getMyInbox();
-    if (result.success) {
-      setInboxItems(result.data || []);
-    } else {
-      setDebugInfo((prev) => `${prev}\ninbox error => ${result.error?.message || JSON.stringify(result.error)}`);
+    setIsInboxLoading(true);
+    try {
+      const result = await InboxService.getMyInbox();
+      if (result.success) {
+        setInboxItems(result.data || []);
+      } else {
+        setDebugInfo((prev) => `${prev}\ninbox error => ${result.error?.message || JSON.stringify(result.error)}`);
+      }
+    } finally {
+      setIsInboxLoading(false);
     }
   };
 
@@ -446,6 +453,11 @@ export default function MeowTrackChat() {
     setMessages(messagesResult.data || []);
     setReplyingTo(null);
     setScreen('chat');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollChatToBottom();
+      });
+    });
     if (IS_DEBUG_MODE) {
       setDebugInfo((prev) => `${prev}\nchat ready => ${chat.id}\nmessageCount => ${(messagesResult.data || []).length}`);
     }
@@ -492,6 +504,12 @@ export default function MeowTrackChat() {
   const getReplyAuthorLabel = (message) => {
     if (!message) return '';
     return message.sender_id === currentUser?.id ? 'You' : (activeChat?.otherProfile?.display_name || activeChat?.otherProfile?.username || 'User');
+  };
+
+  const scrollChatToBottom = () => {
+    const container = chatMessagesRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
   };
 
   const Feedback = () => (
@@ -573,7 +591,7 @@ export default function MeowTrackChat() {
     <>
       <div className="contacts-header">
         <h3 style={{ marginBottom: 12 }}>Chats</h3>
-        {isTabLoading ? (
+        {isInboxLoading ? (
           <div className="skeleton-list">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div>
         ) : inboxItems.length === 0 ? (
           <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada percakapan</p></div>
@@ -696,8 +714,19 @@ export default function MeowTrackChat() {
           </div>
         </div>
         <Feedback />
-        <div className="chat-messages">
-          {isChatOpening ? <div className="skeleton-chat">{Array.from({ length: 5 }).map((_, i) => <div key={i} className={`skeleton-bubble ${i % 2 === 0 ? 'left' : 'right'}`} />)}</div> : messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>Kirim pesan untuk memulai percakapan</p></div> : (
+        {isChatOpening ? (
+          <div className="chat-loading-shell">
+            <div className="chat-loading-header">
+              <div className="skeleton-line skeleton-line-title" />
+              <div className="skeleton-line skeleton-line-subtitle" />
+            </div>
+            <div className="chat-messages chat-messages-loading">
+              <div className="skeleton-chat">{Array.from({ length: 6 }).map((_, i) => <div key={i} className={`skeleton-bubble ${i % 2 === 0 ? 'left' : 'right'}`} />)}</div>
+            </div>
+          </div>
+        ) : (
+        <div className="chat-messages" ref={chatMessagesRef}>
+          {messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>Kirim pesan untuk memulai percakapan</p></div> : (
             messages.map((msg) => {
               const isOwn = msg.sender_id === currentUser?.id;
               const reads = messageReadMap[msg.id] || [];
@@ -721,21 +750,24 @@ export default function MeowTrackChat() {
             })
           )}
         </div>
-        <div className="chat-input-area-wrapper">
-          {replyingTo && (
-            <div className="replying-bar">
-              <div className="replying-copy">
-                <div className="replying-label">Membalas {getReplyAuthorLabel(replyingTo)}</div>
-                <div className="replying-snippet">{getReplyPreviewText(replyingTo)}</div>
+        )}
+        {!isChatOpening && (
+          <div className="chat-input-area-wrapper">
+            {replyingTo && (
+              <div className="replying-bar">
+                <div className="replying-copy">
+                  <div className="replying-label">Membalas {getReplyAuthorLabel(replyingTo)}</div>
+                  <div className="replying-snippet">{getReplyPreviewText(replyingTo)}</div>
+                </div>
+                <button className="replying-close" type="button" onClick={() => setReplyingTo(null)}>×</button>
               </div>
-              <button className="replying-close" type="button" onClick={() => setReplyingTo(null)}>×</button>
+            )}
+            <div className="chat-input-area">
+              <textarea className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+              <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
             </div>
-          )}
-          <div className="chat-input-area">
-            <textarea className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
-            <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

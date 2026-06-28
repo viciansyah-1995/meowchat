@@ -205,6 +205,35 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
   gap: 10px;
 }
 
+.chat-loading-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-loading-header {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-messages-loading {
+  pointer-events: none;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 999px;
+  background: #e8edf9;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-line-title { width: 42%; }
+.skeleton-line-subtitle { width: 26%; }
+
 .skeleton-bubble {
   height: 52px;
   border-radius: 14px;
@@ -215,7 +244,8 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .skeleton-bubble.right { align-self: flex-end; width: 60%; }
 
 .skeleton-item::after,
-.skeleton-bubble::after {
+.skeleton-bubble::after,
+.skeleton-line::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -244,5 +274,11 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 
   .auth-logo h2 {
     text-shadow: 0 0 18px rgba(66, 116, 217, 0.10);
+  }
+
+  .skeleton-item,
+  .skeleton-bubble,
+  .skeleton-line {
+    background: #243766;
   }
 }
