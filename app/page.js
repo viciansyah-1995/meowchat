@@ -489,11 +489,9 @@ export default function MeowTrackChat() {
     }
   };
 
-  const handleComposerKeyDown = async (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      await handleSendMessage();
-    }
+  const handleComposerKeyDown = () => {
+    // Enter sekarang dipakai untuk newline.
+    // Kirim pesan hanya lewat tombol send.
   };
 
   const getReplyPreviewText = (message) => {
