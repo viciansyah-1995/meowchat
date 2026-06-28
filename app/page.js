@@ -37,6 +37,7 @@ export default function MeowTrackChat() {
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageReadMap, setMessageReadMap] = useState({});
+  const [replyingTo, setReplyingTo] = useState(null);
   const [messageInput, setMessageInput] = useState('');
   const [chatChannel, setChatChannel] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
@@ -304,6 +305,7 @@ export default function MeowTrackChat() {
     setInboxItems([]);
     setActiveChat(null);
     setMessages([]);
+    setReplyingTo(null);
     setScreen('login');
     setSuccessMessage('Logout berhasil');
   };
@@ -442,6 +444,7 @@ export default function MeowTrackChat() {
     setChatChannel(channel);
     setActiveChat({ chat, otherProfile: profile });
     setMessages(messagesResult.data || []);
+    setReplyingTo(null);
     setScreen('chat');
     if (IS_DEBUG_MODE) {
       setDebugInfo((prev) => `${prev}\nchat ready => ${chat.id}\nmessageCount => ${(messagesResult.data || []).length}`);
@@ -456,7 +459,7 @@ export default function MeowTrackChat() {
 
     setIsSendingMessage(true);
     try {
-      const result = await SupabaseChatService.sendTextMessage(activeChat.chat.id, messageInput.trim());
+      const result = await SupabaseChatService.sendTextMessage(activeChat.chat.id, messageInput.trim(), replyingTo?.id || null);
       if (!result.success) {
         setErrorMessage(result.error?.message || 'Gagal kirim pesan');
         return;
@@ -466,6 +469,7 @@ export default function MeowTrackChat() {
         setDebugInfo(`message sent => ${JSON.stringify(result.data)}`);
       }
       setMessageInput('');
+      setReplyingTo(null);
       await loadInbox();
       await loadChatReadMap(activeChat.chat.id);
     } finally {
@@ -478,6 +482,16 @@ export default function MeowTrackChat() {
       e.preventDefault();
       await handleSendMessage();
     }
+  };
+
+  const getReplyPreviewText = (message) => {
+    if (!message) return '';
+    return (message.content || '').trim().slice(0, 90) || 'Pesan';
+  };
+
+  const getReplyAuthorLabel = (message) => {
+    if (!message) return '';
+    return message.sender_id === currentUser?.id ? 'You' : (activeChat?.otherProfile?.display_name || activeChat?.otherProfile?.username || 'User');
   };
 
   const Feedback = () => (
@@ -675,7 +689,7 @@ export default function MeowTrackChat() {
     <div className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen">
       <div className="chat-container">
         <div className="chat-header">
-          <button className="chat-back" onClick={async () => { setScreen('app'); setActiveTab('chats'); setActiveChat(null); clearFeedback(); setMessageReadMap({}); await loadInbox(); }}>←</button>
+          <button className="chat-back" onClick={async () => { setScreen('app'); setActiveTab('chats'); setActiveChat(null); clearFeedback(); setMessageReadMap({}); setReplyingTo(null); await loadInbox(); }}>←</button>
           <div className="chat-contact-info">
             <h3>{activeChatTitle}</h3>
             <p>@{activeChat?.otherProfile?.username}</p>
@@ -689,7 +703,17 @@ export default function MeowTrackChat() {
               const reads = messageReadMap[msg.id] || [];
               const readByOther = reads.some((r) => r.profile_id !== currentUser?.id);
               return (
-                <div key={msg.id} className={`message ${isOwn ? 'message-own' : 'message-other'}`}>
+                <div key={msg.id} className={`message ${isOwn ? 'message-own' : 'message-other'}`} onClick={() => setReplyingTo(msg)}>
+                  {msg.reply_to_message_id ? (() => {
+                    const repliedMessage = messages.find((item) => item.id === msg.reply_to_message_id);
+                    if (!repliedMessage) return null;
+                    return (
+                      <div className="reply-quote">
+                        <div className="reply-quote-author">{getReplyAuthorLabel(repliedMessage)}</div>
+                        <div className="reply-quote-text">{getReplyPreviewText(repliedMessage)}</div>
+                      </div>
+                    );
+                  })() : null}
                   {msg.content && <p>{msg.content}</p>}
                   <div className="message-time">{formatTime(new Date(msg.created_at).getTime())}{isOwn ? ` · ${readByOther ? 'Read' : 'Sent'}` : ''}</div>
                 </div>
@@ -697,9 +721,20 @@ export default function MeowTrackChat() {
             })
           )}
         </div>
-        <div className="chat-input-area">
-          <textarea className="composer-textarea" rows={1} placeholder="Ketik pesan..." value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
-          <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
+        <div className="chat-input-area-wrapper">
+          {replyingTo && (
+            <div className="replying-bar">
+              <div className="replying-copy">
+                <div className="replying-label">Membalas {getReplyAuthorLabel(replyingTo)}</div>
+                <div className="replying-snippet">{getReplyPreviewText(replyingTo)}</div>
+              </div>
+              <button className="replying-close" type="button" onClick={() => setReplyingTo(null)}>×</button>
+            </div>
+          )}
+          <div className="chat-input-area">
+            <textarea className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+            <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
+          </div>
         </div>
       </div>
     </div>
