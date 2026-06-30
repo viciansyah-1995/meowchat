@@ -38,6 +38,7 @@ export default function MeowTrackChat() {
   const [messages, setMessages] = useState([]);
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
+  const [pendingImage, setPendingImage] = useState(null);
   const [messageInput, setMessageInput] = useState('');
   const [chatChannel, setChatChannel] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
@@ -47,6 +48,7 @@ export default function MeowTrackChat() {
   const [isInboxLoading, setIsInboxLoading] = useState(false);
   const [isChatOpening, setIsChatOpening] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const chatMessagesRef = useRef(null);
@@ -313,6 +315,7 @@ export default function MeowTrackChat() {
     setActiveChat(null);
     setMessages([]);
     setReplyingTo(null);
+    setPendingImage(null);
     setScreen('login');
     setSuccessMessage('Logout berhasil');
   };
@@ -452,6 +455,7 @@ export default function MeowTrackChat() {
     setActiveChat({ chat, otherProfile: profile });
     setMessages(messagesResult.data || []);
     setReplyingTo(null);
+    setPendingImage(null);
     setScreen('chat');
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -492,6 +496,68 @@ export default function MeowTrackChat() {
   const handleComposerKeyDown = () => {
     // Enter sekarang dipakai untuk newline.
     // Kirim pesan hanya lewat tombol send.
+  };
+
+  const handlePickImage = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage('File harus berupa gambar');
+      return;
+    }
+
+    const maxBytes = 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setErrorMessage('Ukuran gambar maksimal 10 MB');
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setPendingImage({ file, previewUrl, name: file.name, size: file.size });
+    clearFeedback();
+  };
+
+  const clearPendingImage = () => {
+    setPendingImage((prev) => {
+      if (prev?.previewUrl) {
+        URL.revokeObjectURL(prev.previewUrl);
+      }
+      return null;
+    });
+  };
+
+  const handleSendImage = async () => {
+    clearFeedback();
+    if (!activeChat?.chat?.id || !pendingImage?.file || isUploadingImage) return;
+
+    setIsUploadingImage(true);
+    try {
+      const uploadResult = await SupabaseChatService.uploadChatImage(pendingImage.file);
+      if (!uploadResult.success) {
+        setErrorMessage(uploadResult.error?.message || 'Gagal upload gambar');
+        return;
+      }
+
+      const sendResult = await SupabaseChatService.sendImageMessage(
+        activeChat.chat.id,
+        uploadResult.data.publicUrl,
+        replyingTo?.id || null
+      );
+
+      if (!sendResult.success) {
+        setErrorMessage(sendResult.error?.message || 'Gagal kirim gambar');
+        return;
+      }
+
+      clearPendingImage();
+      setReplyingTo(null);
+      await loadInbox();
+      await loadChatReadMap(activeChat.chat.id);
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
   const getReplyPreviewText = (message) => {
@@ -741,6 +807,9 @@ export default function MeowTrackChat() {
                       </div>
                     );
                   })() : null}
+                  {msg.message_type === 'image' && msg.image_url ? (
+                    <img src={msg.image_url} alt="Chat image" className="message-image" />
+                  ) : null}
                   {msg.content && <p>{msg.content}</p>}
                   <div className="message-time">{formatTime(new Date(msg.created_at).getTime())}{isOwn ? ` · ${readByOther ? 'Read' : 'Sent'}` : ''}</div>
                 </div>
@@ -760,9 +829,27 @@ export default function MeowTrackChat() {
                 <button className="replying-close" type="button" onClick={() => setReplyingTo(null)}>×</button>
               </div>
             )}
+            {pendingImage && (
+              <div className="pending-image-bar">
+                <img src={pendingImage.previewUrl} alt="Preview upload" className="pending-image-preview" />
+                <div className="pending-image-copy">
+                  <div className="replying-label">Siap dikirim</div>
+                  <div className="replying-snippet">{pendingImage.name}</div>
+                </div>
+                <button className="replying-close" type="button" onClick={clearPendingImage}>×</button>
+              </div>
+            )}
             <div className="chat-input-area">
-              <textarea className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
-              <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
+              <label className="chat-btn chat-btn-attach" title="Tambah foto">
+                📷
+                <input type="file" accept="image/*" capture="environment" onChange={handlePickImage} hidden />
+              </label>
+              <textarea className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : pendingImage ? 'Tambahkan caption (opsional)...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+              {pendingImage ? (
+                <button className="chat-btn chat-btn-send" onClick={handleSendImage} disabled={isUploadingImage}>{isUploadingImage ? '…' : '⬆'}</button>
+              ) : (
+                <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
+              )}
             </div>
           </div>
         )}
