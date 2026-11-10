@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SupabaseAuthService from '../lib/services/supabase-auth.service.js';
 import ProfileService from '../lib/services/profile.service.js';
 import ProfileEditService from '../lib/services/profile-edit.service.supabase.js';
@@ -40,7 +40,6 @@ export default function MeowTrackChat() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [pendingImage, setPendingImage] = useState(null);
   const [messageInput, setMessageInput] = useState('');
-  const [chatChannel, setChatChannel] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
@@ -72,7 +71,7 @@ export default function MeowTrackChat() {
     }
   };
 
-  const loadInbox = async () => {
+  const loadInbox = useCallback(async () => {
     setIsInboxLoading(true);
     try {
       const result = await InboxService.getMyInbox();
@@ -84,7 +83,71 @@ export default function MeowTrackChat() {
     } finally {
       setIsInboxLoading(false);
     }
-  };
+  }, []);
+
+  const chatId = screen === 'chat' ? activeChat?.chat?.id : null;
+  const peerId = activeChat?.otherProfile?.id;
+
+  useEffect(() => {
+    if (!chatId || !peerId) return;
+    let closed = false;
+
+    const refreshReceipts = async () => {
+      const result = await InboxService.getReadStatusMap(chatId, peerId);
+      if (!closed && result.success) {
+        setMessageReadMap((previous) => ({ ...result.data, ...previous }));
+      }
+    };
+
+    const markVisibleChatAsRead = async () => {
+      if (closed || document.visibilityState !== 'visible') return;
+      const result = await InboxService.markChatAsRead(chatId);
+      if (!closed && result.success && result.data.length > 0) await loadInbox();
+    };
+
+    const refreshChat = async () => {
+      const result = await SupabaseChatService.getMessages(chatId);
+      if (closed) return;
+      if (result.success) {
+        setMessages((previous) => {
+          const byId = new Map([...result.data, ...previous].map((message) => [message.id, message]));
+          return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+        });
+      }
+      await Promise.all([refreshReceipts(), markVisibleChatAsRead()]);
+    };
+
+    const reportError = (error) => {
+      if (!closed && IS_DEBUG_MODE) console.error('Chat sync failed', error);
+    };
+
+    const channel = SupabaseChatService.subscribeChat(chatId, peerId, {
+      onMessage(message) {
+        if (closed) return;
+        setMessages((previous) => previous.some(({ id }) => id === message.id) ? previous : [...previous, message]);
+        if (message.sender_id === peerId) markVisibleChatAsRead().catch(reportError);
+        else loadInbox().catch(reportError);
+      },
+      onRead(receipt) {
+        if (!closed) setMessageReadMap((previous) => ({ ...previous, [receipt.message_id]: [receipt] }));
+      },
+      onReady() {
+        if (!closed) refreshChat().catch(reportError);
+      },
+    });
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshChat().catch(reportError);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    Promise.all([refreshReceipts(), markVisibleChatAsRead()]).catch(reportError);
+
+    return () => {
+      closed = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      SupabaseChatService.unsubscribe(channel);
+    };
+  }, [chatId, peerId, loadInbox]);
 
   const hydrateAppShell = async (profile) => {
     setCurrentProfile(profile);
@@ -231,9 +294,6 @@ export default function MeowTrackChat() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
       data?.subscription?.unsubscribe();
-      if (chatChannel) {
-        SupabaseChatService.unsubscribe(chatChannel);
-      }
     };
   }, []);
 
@@ -297,10 +357,6 @@ export default function MeowTrackChat() {
 
   const handleLogout = async () => {
     clearFeedback();
-    if (chatChannel) {
-      SupabaseChatService.unsubscribe(chatChannel);
-      setChatChannel(null);
-    }
     const result = await SupabaseAuthService.signOut();
     if (!result.success) {
       setErrorMessage(result.error?.message || 'Logout gagal');
@@ -389,13 +445,6 @@ export default function MeowTrackChat() {
     window.localStorage.setItem('database_demo_install_prompt_dismissed', 'true');
   };
 
-  const loadChatReadMap = async (chatId) => {
-    const result = await InboxService.getReadStatusMap(chatId);
-    if (result.success) {
-      setMessageReadMap(result.data || {});
-    }
-  };
-
   const openDirectChat = async (profile) => {
     clearFeedback();
     setIsChatOpening(true);
@@ -428,32 +477,9 @@ export default function MeowTrackChat() {
       return;
     }
 
-    await InboxService.markChatAsRead(chat.id);
-    await loadInbox();
-    await loadChatReadMap(chat.id);
-
-    if (chatChannel) {
-      SupabaseChatService.unsubscribe(chatChannel);
-      setChatChannel(null);
-    }
-
-    const channel = SupabaseChatService.subscribeMessages(`chat:${chat.id}:${Date.now()}`, chat.id, async (newMessage) => {
-      setMessages((prev) => {
-        const exists = prev.some((msg) => msg.id === newMessage.id);
-        if (exists) return prev;
-        return [...prev, newMessage];
-      });
-      if (IS_DEBUG_MODE) {
-        setDebugInfo((prev) => `${prev}\nrealtime message received => ${newMessage.id}`);
-      }
-      await InboxService.markChatAsRead(chat.id);
-      await loadInbox();
-      await loadChatReadMap(chat.id);
-    });
-
-    setChatChannel(channel);
     setActiveChat({ chat, otherProfile: profile });
     setMessages(messagesResult.data || []);
+    setMessageReadMap({});
     setReplyingTo(null);
     setPendingImage(null);
     setScreen('chat');
@@ -487,7 +513,6 @@ export default function MeowTrackChat() {
       setMessageInput('');
       setReplyingTo(null);
       await loadInbox();
-      await loadChatReadMap(activeChat.chat.id);
     } finally {
       setIsSendingMessage(false);
     }
@@ -554,7 +579,6 @@ export default function MeowTrackChat() {
       clearPendingImage();
       setReplyingTo(null);
       await loadInbox();
-      await loadChatReadMap(activeChat.chat.id);
     } finally {
       setIsUploadingImage(false);
     }
@@ -794,7 +818,7 @@ export default function MeowTrackChat() {
             messages.map((msg) => {
               const isOwn = msg.sender_id === currentUser?.id;
               const reads = messageReadMap[msg.id] || [];
-              const readByOther = reads.some((r) => r.profile_id !== currentUser?.id);
+              const readByOther = reads.some((r) => r.profile_id === peerId);
               return (
                 <div key={msg.id} className={`message ${isOwn ? 'message-own' : 'message-other'}`} onClick={() => setReplyingTo(msg)}>
                   {msg.reply_to_message_id ? (() => {
@@ -811,7 +835,18 @@ export default function MeowTrackChat() {
                     <img src={msg.image_url} alt="Chat image" className="message-image" />
                   ) : null}
                   {msg.content && <p>{msg.content}</p>}
-                  <div className="message-time">{formatTime(new Date(msg.created_at).getTime())}{isOwn ? ` · ${readByOther ? 'Read' : 'Sent'}` : ''}</div>
+                  <div className="message-meta">
+                    <time dateTime={msg.created_at}>{formatTime(new Date(msg.created_at).getTime())}</time>
+                    {isOwn && (
+                      <span className={`message-receipt ${readByOther ? 'message-receipt-read' : 'message-receipt-sent'}`}>
+                        <svg width="14" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="m1 6 3 3 6-6" />
+                          {readByOther && <path d="m7.5 8 1 1 6-6" />}
+                        </svg>
+                        {readByOther ? 'Dibaca' : 'Terkirim'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })
