@@ -50,6 +50,7 @@ export default function MeowTrackChat() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const chatScreenRef = useRef(null);
   const chatMessagesRef = useRef(null);
 
   const clearFeedback = () => {
@@ -87,6 +88,29 @@ export default function MeowTrackChat() {
 
   const chatId = screen === 'chat' ? activeChat?.chat?.id : null;
   const peerId = activeChat?.otherProfile?.id;
+
+  useEffect(() => {
+    if (screen !== 'chat') return;
+    const viewport = window.visualViewport;
+    const chatScreen = chatScreenRef.current;
+    if (!viewport || !chatScreen) return;
+
+    // The keyboard can shrink or pan the visible viewport without resizing the page.
+    const fitChatToViewport = () => {
+      chatScreen.style.top = `${viewport.offsetTop}px`;
+      chatScreen.style.height = `${viewport.height}px`;
+    };
+
+    fitChatToViewport();
+    viewport.addEventListener('resize', fitChatToViewport);
+    viewport.addEventListener('scroll', fitChatToViewport);
+    return () => {
+      viewport.removeEventListener('resize', fitChatToViewport);
+      viewport.removeEventListener('scroll', fitChatToViewport);
+      chatScreen.style.removeProperty('top');
+      chatScreen.style.removeProperty('height');
+    };
+  }, [screen]);
 
   useEffect(() => {
     if (!chatId || !peerId) return;
@@ -791,16 +815,31 @@ export default function MeowTrackChat() {
     </div>
   );
 
+  const handleBackToChats = async () => {
+    setScreen('app');
+    setActiveTab('chats');
+    setActiveChat(null);
+    setMessageReadMap({});
+    setReplyingTo(null);
+    clearFeedback();
+    await loadInbox();
+  };
+
   const renderChat = () => (
-    <div className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen">
+    <div ref={chatScreenRef} className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen">
       <div className="chat-container">
-        <div className="chat-header">
-          <button className="chat-back" onClick={async () => { setScreen('app'); setActiveTab('chats'); setActiveChat(null); clearFeedback(); setMessageReadMap({}); setReplyingTo(null); await loadInbox(); }}>←</button>
+        <header className="chat-header">
+          <button type="button" className="chat-back" onClick={handleBackToChats}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m12 19-7-7 7-7M5 12h14" />
+            </svg>
+            Daftar pesan
+          </button>
           <div className="chat-contact-info">
             <h3>{activeChatTitle}</h3>
             <p>@{activeChat?.otherProfile?.username}</p>
           </div>
-        </div>
+        </header>
         <Feedback />
         {isChatOpening ? (
           <div className="chat-loading-shell">
