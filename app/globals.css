@@ -2,8 +2,13 @@
   --bg-primary: #ffffff;
   --bg-secondary: #f5f7ff;
   --bg-chat: #eef3ff;
-  --bg-own-msg: #dfe8ff;
+  --bg-own-msg: #d9eaff;
   --bg-other-msg: #ffffff;
+  --own-msg-border: #b9d3f5;
+  --other-msg-border: #d5dfef;
+  --message-meta: #45546a;
+  --receipt-read-bg: #cef4df;
+  --receipt-read-text: #135739;
   --surface-primary: rgba(255, 255, 255, 0.96);
   --surface-secondary: rgba(255, 255, 255, 0.92);
   --surface-accent-soft: rgba(66, 116, 217, 0.10);
@@ -24,8 +29,13 @@
     --bg-primary: #0f172a;
     --bg-secondary: #162033;
     --bg-chat: #0b1324;
-    --bg-own-msg: #30488f;
-    --bg-other-msg: #182235;
+    --bg-own-msg: #294a78;
+    --bg-other-msg: #25364e;
+    --own-msg-border: #4e6f9e;
+    --other-msg-border: #475b76;
+    --message-meta: #d2dff1;
+    --receipt-read-bg: #a7edc7;
+    --receipt-read-text: #13472e;
     --surface-primary: rgba(15, 23, 42, 0.96);
     --surface-secondary: rgba(24, 34, 53, 0.92);
     --surface-accent-soft: rgba(66, 116, 217, 0.18);
@@ -54,7 +64,6 @@
   .auth-footer,
   .contact-preview,
   .input-group label,
-  .message-time,
   .chat-contact-info p {
     color: #9fb0cb;
   }
@@ -100,7 +109,6 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .auth-footer,
 .contact-preview,
 .input-group label,
-.message-time,
 .chat-contact-info p { color: var(--text-secondary); }
 .install-prompt-card { margin: -10px 0 18px; padding: 16px; border-radius: 20px; background: linear-gradient(180deg, var(--surface-accent-soft), color-mix(in srgb, var(--surface-primary) 82%, var(--accent-dark) 18%)); border: 1px solid var(--surface-accent-border); box-shadow: 0 14px 30px rgba(41,54,129,0.08); }
 .install-prompt-copy h3 { font-size: 18px; font-weight: 700; color: var(--accent-dark); margin-bottom: 4px; }
@@ -144,10 +152,14 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .chat-contact-info h3 { font-size: 16px; font-weight: 600; }
 .chat-contact-info p { font-size: 13px; opacity: 0.9; color: rgba(255,255,255,0.82); }
 .chat-messages { flex: 1; background: var(--bg-chat); padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.message { max-width: 78%; padding: 10px 12px; border-radius: 12px; font-size: 15px; line-height: 1.55; word-wrap: break-word; box-shadow: 0 4px 10px rgba(17, 24, 39, 0.04); color: var(--text-primary); }
-.message-own { background: var(--bg-own-msg); align-self: flex-end; border-top-right-radius: 4px; color: #f8fbff; }
-.message-other { background: var(--bg-other-msg); align-self: flex-start; border-top-left-radius: 4px; }
-.message-time { font-size: 11px; color: var(--text-time); text-align: right; margin-top: 4px; }
+.message { max-width: 78%; padding: 10px 12px; border: 1px solid; border-radius: 12px; font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; box-shadow: 0 4px 10px rgba(17, 24, 39, 0.04); color: var(--text-primary); }
+.message-own { background: var(--bg-own-msg); border-color: var(--own-msg-border); align-self: flex-end; border-top-right-radius: 4px; }
+.message-other { background: var(--bg-other-msg); border-color: var(--other-msg-border); align-self: flex-start; border-top-left-radius: 4px; }
+.message-meta { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; font-size: 11px; color: var(--message-meta); }
+.message-meta time { white-space: nowrap; }
+.message-receipt { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+.message-receipt-sent { box-shadow: inset 0 0 0 1px currentColor; }
+.message-receipt-read { background: var(--receipt-read-bg); color: var(--receipt-read-text); }
 .chat-input-area-wrapper { background: var(--surface-primary); border-top: 1px solid var(--divider); }
 .replying-bar { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px 0; }
 .replying-copy { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--surface-secondary) 88%, var(--accent) 12%); border-left: 3px solid var(--accent); }
