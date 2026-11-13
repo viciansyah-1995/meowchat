@@ -156,6 +156,7 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .message-own { background: var(--bg-own-msg); border-color: var(--own-msg-border); align-self: flex-end; border-top-right-radius: 4px; }
 .message-other { background: var(--bg-other-msg); border-color: var(--other-msg-border); align-self: flex-start; border-top-left-radius: 4px; }
 .message-content { white-space: pre-wrap; }
+.chat-load-older { align-self: center; flex: none; padding: 8px 12px; font-size: 13px; }
 .message-meta { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; font-size: 11px; color: var(--message-meta); }
 .message-meta time { white-space: nowrap; }
 .message-receipt { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
