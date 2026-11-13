@@ -873,7 +873,7 @@ export default function MeowTrackChat() {
                   {msg.message_type === 'image' && msg.image_url ? (
                     <img src={msg.image_url} alt="Chat image" className="message-image" />
                   ) : null}
-                  {msg.content && <p>{msg.content}</p>}
+                  {msg.content && <p className="message-content">{msg.content}</p>}
                   <div className="message-meta">
                     <time dateTime={msg.created_at}>{formatTime(new Date(msg.created_at).getTime())}</time>
                     {isOwn && (
