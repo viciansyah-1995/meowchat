@@ -36,6 +36,8 @@ export default function MeowTrackChat() {
   const [inboxItems, setInboxItems] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [olderCursor, setOlderCursor] = useState(null);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [pendingImage, setPendingImage] = useState(null);
@@ -52,6 +54,7 @@ export default function MeowTrackChat() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const chatScreenRef = useRef(null);
   const chatMessagesRef = useRef(null);
+  const olderRequestRef = useRef(null);
 
   const clearFeedback = () => {
     setErrorMessage('');
@@ -88,6 +91,22 @@ export default function MeowTrackChat() {
 
   const chatId = screen === 'chat' ? activeChat?.chat?.id : null;
   const peerId = activeChat?.otherProfile?.id;
+  const userId = currentUser?.id;
+
+  const syncReadStatus = useCallback(async (page, readerId, isCurrent) => {
+    const receipts = await InboxService.getReadStatusMap(
+      page.filter((message) => message.sender_id === userId).map((message) => message.id),
+      readerId
+    );
+    if (isCurrent() && receipts.success) {
+      setMessageReadMap((previous) => ({ ...receipts.data, ...previous }));
+    }
+    if (!isCurrent() || document.visibilityState !== 'visible') return;
+    const result = await InboxService.markMessagesAsRead(
+      page.filter((message) => message.sender_id !== userId).map((message) => message.id)
+    );
+    if (isCurrent() && result.success && result.data.length > 0) await loadInbox();
+  }, [userId, loadInbox]);
 
   useEffect(() => {
     if (screen !== 'chat') return;
@@ -113,21 +132,9 @@ export default function MeowTrackChat() {
   }, [screen]);
 
   useEffect(() => {
-    if (!chatId || !peerId) return;
+    if (!chatId || !peerId || !userId) return;
     let closed = false;
-
-    const refreshReceipts = async () => {
-      const result = await InboxService.getReadStatusMap(chatId, peerId);
-      if (!closed && result.success) {
-        setMessageReadMap((previous) => ({ ...result.data, ...previous }));
-      }
-    };
-
-    const markVisibleChatAsRead = async () => {
-      if (closed || document.visibilityState !== 'visible') return;
-      const result = await InboxService.markChatAsRead(chatId);
-      if (!closed && result.success && result.data.length > 0) await loadInbox();
-    };
+    const isCurrent = () => !closed;
 
     const refreshChat = async () => {
       const result = await SupabaseChatService.getMessages(chatId);
@@ -135,10 +142,10 @@ export default function MeowTrackChat() {
       if (result.success) {
         setMessages((previous) => {
           const byId = new Map([...result.data, ...previous].map((message) => [message.id, message]));
-          return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+          return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
         });
+        await syncReadStatus(result.data, peerId, isCurrent);
       }
-      await Promise.all([refreshReceipts(), markVisibleChatAsRead()]);
     };
 
     const reportError = (error) => {
@@ -149,7 +156,7 @@ export default function MeowTrackChat() {
       onMessage(message) {
         if (closed) return;
         setMessages((previous) => previous.some(({ id }) => id === message.id) ? previous : [...previous, message]);
-        if (message.sender_id === peerId) markVisibleChatAsRead().catch(reportError);
+        if (message.sender_id === peerId) syncReadStatus([message], peerId, isCurrent).catch(reportError);
         else loadInbox().catch(reportError);
       },
       onRead(receipt) {
@@ -164,14 +171,15 @@ export default function MeowTrackChat() {
       if (document.visibilityState === 'visible') refreshChat().catch(reportError);
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
-    Promise.all([refreshReceipts(), markVisibleChatAsRead()]).catch(reportError);
+    refreshChat().catch(reportError);
 
     return () => {
       closed = true;
+      olderRequestRef.current = null;
       document.removeEventListener('visibilitychange', onVisibilityChange);
       SupabaseChatService.unsubscribe(channel);
     };
-  }, [chatId, peerId, loadInbox]);
+  }, [chatId, peerId, userId, loadInbox, syncReadStatus]);
 
   const hydrateAppShell = async (profile) => {
     setCurrentProfile(profile);
@@ -503,6 +511,8 @@ export default function MeowTrackChat() {
 
     setActiveChat({ chat, otherProfile: profile });
     setMessages(messagesResult.data || []);
+    setOlderCursor(messagesResult.olderCursor);
+    setIsLoadingOlder(false);
     setMessageReadMap({});
     setReplyingTo(null);
     setPendingImage(null);
@@ -517,6 +527,32 @@ export default function MeowTrackChat() {
     }
     setSuccessMessage(chatResult.created ? 'Direct chat baru dibuat' : 'Direct chat dibuka');
     setIsChatOpening(false);
+  };
+
+  const loadOlderMessages = async () => {
+    if (!chatId || !olderCursor || olderRequestRef.current) return;
+    const request = {};
+    olderRequestRef.current = request;
+    const isCurrent = () => olderRequestRef.current === request;
+    setIsLoadingOlder(true);
+    try {
+      const result = await SupabaseChatService.getMessages(chatId, olderCursor);
+      if (!isCurrent()) return;
+      if (!result.success) throw result.error;
+      setMessages((previous) => {
+        const existingIds = new Set(previous.map((message) => message.id));
+        return [...result.data.filter((message) => !existingIds.has(message.id)), ...previous];
+      });
+      setOlderCursor(result.olderCursor);
+      await syncReadStatus(result.data, peerId, isCurrent);
+    } catch {
+      if (isCurrent()) setErrorMessage('Riwayat pesan gagal dimuat. Coba lagi.');
+    } finally {
+      if (isCurrent()) {
+        olderRequestRef.current = null;
+        setIsLoadingOlder(false);
+      }
+    }
   };
 
   const handleSendMessage = async () => {
@@ -853,6 +889,11 @@ export default function MeowTrackChat() {
           </div>
         ) : (
         <div className="chat-messages" ref={chatMessagesRef}>
+          {olderCursor && (
+            <button type="button" className="btn btn-secondary chat-load-older" onClick={loadOlderMessages} disabled={isLoadingOlder}>
+              {isLoadingOlder ? 'Memuat riwayat…' : 'Muat pesan sebelumnya'}
+            </button>
+          )}
           {messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>Kirim pesan untuk memulai percakapan</p></div> : (
             messages.map((msg) => {
               const isOwn = msg.sender_id === currentUser?.id;
