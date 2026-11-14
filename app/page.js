@@ -41,6 +41,7 @@ export default function MeowTrackChat() {
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [pendingImage, setPendingImage] = useState(null);
+  const [showAttachments, setShowAttachments] = useState(false);
   const [messageInput, setMessageInput] = useState('');
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
@@ -54,6 +55,10 @@ export default function MeowTrackChat() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const chatScreenRef = useRef(null);
   const chatMessagesRef = useRef(null);
+  const composerRef = useRef(null);
+  const attachmentButtonRef = useRef(null);
+  const galleryInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const olderRequestRef = useRef(null);
 
   const clearFeedback = () => {
@@ -114,22 +119,38 @@ export default function MeowTrackChat() {
     const chatScreen = chatScreenRef.current;
     if (!viewport || !chatScreen) return;
 
-    // The keyboard can shrink or pan the visible viewport without resizing the page.
+    let frame = 0;
     const fitChatToViewport = () => {
-      chatScreen.style.top = `${viewport.offsetTop}px`;
+      const top = Math.max(0, viewport.offsetTop);
+      chatScreen.style.top = `${top}px`;
       chatScreen.style.height = `${viewport.height}px`;
+      const keyboardInset = window.innerHeight - top - viewport.height;
+      chatScreen.toggleAttribute('data-keyboard-open', keyboardInset > 100 && viewport.scale === 1);
+    };
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitChatToViewport);
     };
 
     fitChatToViewport();
-    viewport.addEventListener('resize', fitChatToViewport);
-    viewport.addEventListener('scroll', fitChatToViewport);
+    viewport.addEventListener('resize', scheduleFit);
+    viewport.addEventListener('scroll', scheduleFit);
+    window.addEventListener('resize', scheduleFit);
     return () => {
-      viewport.removeEventListener('resize', fitChatToViewport);
-      viewport.removeEventListener('scroll', fitChatToViewport);
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener('resize', scheduleFit);
+      viewport.removeEventListener('scroll', scheduleFit);
+      window.removeEventListener('resize', scheduleFit);
       chatScreen.style.removeProperty('top');
       chatScreen.style.removeProperty('height');
+      chatScreen.removeAttribute('data-keyboard-open');
     };
   }, [screen]);
+
+  const pendingPreviewUrl = pendingImage?.previewUrl;
+  useEffect(() => {
+    if (pendingPreviewUrl) return () => URL.revokeObjectURL(pendingPreviewUrl);
+  }, [pendingPreviewUrl]);
 
   useEffect(() => {
     if (!chatId || !peerId || !userId) return;
@@ -516,6 +537,7 @@ export default function MeowTrackChat() {
     setMessageReadMap({});
     setReplyingTo(null);
     setPendingImage(null);
+    setShowAttachments(false);
     setScreen('chat');
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -604,14 +626,13 @@ export default function MeowTrackChat() {
     clearFeedback();
   };
 
-  const clearPendingImage = () => {
-    setPendingImage((prev) => {
-      if (prev?.previewUrl) {
-        URL.revokeObjectURL(prev.previewUrl);
-      }
-      return null;
-    });
+  const openImagePicker = (input) => {
+    attachmentButtonRef.current?.focus({ preventScroll: true });
+    setShowAttachments(false);
+    input.current?.click();
   };
+
+  const clearPendingImage = () => setPendingImage(null);
 
   const handleSendImage = async () => {
     clearFeedback();
@@ -852,6 +873,8 @@ export default function MeowTrackChat() {
   );
 
   const handleBackToChats = async () => {
+    setShowAttachments(false);
+    clearPendingImage();
     setScreen('app');
     setActiveTab('chats');
     setActiveChat(null);
@@ -955,11 +978,39 @@ export default function MeowTrackChat() {
               </div>
             )}
             <div className="chat-input-area">
-              <label className="chat-btn chat-btn-attach" title="Tambah foto">
-                📷
-                <input type="file" accept="image/*" capture="environment" onChange={handlePickImage} hidden />
-              </label>
-              <textarea className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : pendingImage ? 'Tambahkan caption (opsional)...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+              <div
+                className="chat-attachments"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setShowAttachments(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape' || !showAttachments) return;
+                  setShowAttachments(false);
+                  attachmentButtonRef.current?.focus({ preventScroll: true });
+                }}
+              >
+                <button
+                  ref={attachmentButtonRef}
+                  type="button"
+                  className="chat-btn chat-btn-attach"
+                  aria-label="Lampirkan foto"
+                  aria-expanded={showAttachments}
+                  aria-controls="chat-attachment-options"
+                  disabled={isUploadingImage}
+                  onClick={() => {
+                    composerRef.current?.blur();
+                    attachmentButtonRef.current?.focus({ preventScroll: true });
+                    setShowAttachments((open) => !open);
+                  }}
+                ><span aria-hidden="true">📎</span></button>
+                <div id="chat-attachment-options" className="chat-attachment-options" hidden={!showAttachments}>
+                  <button type="button" onClick={() => openImagePicker(cameraInputRef)}>Ambil foto</button>
+                  <button type="button" onClick={() => openImagePicker(galleryInputRef)}>Pilih dari galeri</button>
+                </div>
+                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handlePickImage} hidden />
+                <input ref={galleryInputRef} type="file" accept="image/*" onChange={handlePickImage} hidden />
+              </div>
+              <textarea ref={composerRef} className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
               {pendingImage ? (
                 <button className="chat-btn chat-btn-send" onClick={handleSendImage} disabled={isUploadingImage}>{isUploadingImage ? '…' : '⬆'}</button>
               ) : (
