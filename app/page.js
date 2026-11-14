@@ -56,6 +56,7 @@ export default function MeowTrackChat() {
   const chatScreenRef = useRef(null);
   const chatMessagesRef = useRef(null);
   const composerRef = useRef(null);
+  const attachmentControlsRef = useRef(null);
   const attachmentButtonRef = useRef(null);
   const galleryInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -151,6 +152,20 @@ export default function MeowTrackChat() {
   useEffect(() => {
     if (pendingPreviewUrl) return () => URL.revokeObjectURL(pendingPreviewUrl);
   }, [pendingPreviewUrl]);
+
+  useEffect(() => {
+    if (!showAttachments) return;
+    const closeOutside = (event) => {
+      if (!attachmentControlsRef.current?.contains(event.target)) setShowAttachments(false);
+    };
+
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('focusin', closeOutside);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('focusin', closeOutside);
+    };
+  }, [showAttachments]);
 
   useEffect(() => {
     if (!chatId || !peerId || !userId) return;
@@ -979,10 +994,8 @@ export default function MeowTrackChat() {
             )}
             <div className="chat-input-area">
               <div
+                ref={attachmentControlsRef}
                 className="chat-attachments"
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget)) setShowAttachments(false);
-                }}
                 onKeyDown={(event) => {
                   if (event.key !== 'Escape' || !showAttachments) return;
                   setShowAttachments(false);
