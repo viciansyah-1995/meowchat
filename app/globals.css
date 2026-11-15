@@ -170,7 +170,7 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .replying-label { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
 .replying-snippet { font-size: 13px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .replying-close { border: none; background: transparent; color: var(--text-secondary); font-size: 24px; line-height: 1; cursor: pointer; padding: 4px; }
-.chat-input-area { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 8px; }
+.chat-input-area { position: relative; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 8px; }
 #chat-screen[data-keyboard-open] .chat-input-area { padding-bottom: 10px; }
 .composer-textarea { flex: 1; min-width: 0; padding: 12px 14px; border: 1px solid var(--divider); border-radius: 18px; font-size: 16px; outline: none; font-family: var(--font-main); resize: none; min-height: 46px; max-height: 120px; overflow-y: auto; background: var(--surface-secondary); color: var(--text-primary); }
 .reply-quote { margin-bottom: 8px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--surface-secondary) 86%, var(--accent) 14%); border-left: 3px solid var(--accent); }
@@ -180,6 +180,14 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .chat-btn:hover { color: var(--accent); }
 .chat-btn-attach { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: color-mix(in srgb, var(--surface-secondary) 84%, var(--accent) 16%); font-size: 20px; flex-shrink: 0; }
 .chat-btn-send { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%); color: white; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.voice-composer { flex: none; }
+.voice-panel { position: absolute; inset: auto 12px calc(100% + 4px); z-index: 1; padding: 12px; background: var(--bg-primary); border: 1px solid var(--divider); border-radius: 14px; box-shadow: 0 4px 16px #0002; }
+.voice-panel p, .voice-message p { margin-bottom: 4px; font-size: 13px; font-weight: 600; }
+.voice-panel audio, .voice-message audio { display: block; width: 100%; min-width: 0; height: 40px; }
+.voice-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.voice-panel .btn, .voice-message .btn { padding: 8px 12px; font-size: 13px; }
+.voice-error { color: var(--danger); }
+.voice-message { width: 240px; max-width: 100%; }
 .message-image { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-bottom: 8px; object-fit: cover; }
 .pending-image-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px 0; }
 .pending-image-preview { width: 56px; height: 56px; object-fit: cover; border-radius: 12px; border: 1px solid var(--divider); flex-shrink: 0; }

@@ -9,6 +9,7 @@ import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
+import { VoiceComposer, VoiceMessage } from './voice-note.js';
 
 const NAV_ITEMS = [
   { key: 'chats', label: 'Chat', icon: '💬' },
@@ -698,6 +699,7 @@ export default function MeowTrackChat() {
 
   const getReplyPreviewText = (message) => {
     if (!message) return '';
+    if (message.message_type === 'voice') return 'Voice note';
     return (message.content || '').trim().slice(0, 90) || 'Pesan';
   };
 
@@ -804,7 +806,7 @@ export default function MeowTrackChat() {
                   <div className="contact-avatar">{(targetProfile?.display_name || targetProfile?.username || '?').slice(0, 1).toUpperCase()}</div>
                   <div className="contact-info">
                     <div className="contact-name">{targetProfile?.display_name || 'Unknown'}</div>
-                    <div className="contact-preview">{item.lastMessage?.content || 'Belum ada pesan'}</div>
+                    <div className="contact-preview">{item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan'}</div>
                   </div>
                   <div className="contact-time">
                     {item.lastMessage?.created_at ? formatTime(new Date(item.lastMessage.created_at).getTime()) : ''}
@@ -967,6 +969,9 @@ export default function MeowTrackChat() {
                   {msg.message_type === 'image' && msg.image_url ? (
                     <img src={msg.image_url} alt="Chat image" className="message-image" />
                   ) : null}
+                  {chatId && msg.message_type === 'voice' && msg.voice_path && (
+                    <VoiceMessage path={msg.voice_path} duration={msg.voice_duration_seconds} />
+                  )}
                   {msg.content && <p className="message-content">{msg.content}</p>}
                   <div className="message-meta">
                     <time dateTime={msg.created_at}>{formatTime(new Date(msg.created_at).getTime())}</time>
@@ -1013,6 +1018,18 @@ export default function MeowTrackChat() {
               </button>
               <input ref={galleryInputRef} type="file" accept="image/*" onChange={handlePickImage} hidden />
               <textarea ref={composerRef} className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+              {chatId && (
+                <VoiceComposer
+                  key={chatId}
+                  chatId={chatId}
+                  replyTo={replyingTo?.id}
+                  disabled={isUploadingImage || isSendingMessage}
+                  onSent={() => {
+                    setReplyingTo(null);
+                    loadInbox().catch(() => {});
+                  }}
+                />
+              )}
               {pendingImage ? (
                 <button className="chat-btn chat-btn-send" onClick={handleSendImage} disabled={isUploadingImage}>{isUploadingImage ? '…' : '⬆'}</button>
               ) : (
