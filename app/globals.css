@@ -179,10 +179,6 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .chat-btn { background: none; border: none; font-size: 24px; cursor: pointer; padding: 8px; color: var(--text-secondary); }
 .chat-btn:hover { color: var(--accent); }
 .chat-btn-attach { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: color-mix(in srgb, var(--surface-secondary) 84%, var(--accent) 16%); font-size: 20px; flex-shrink: 0; }
-.chat-attachments { position: relative; flex: none; }
-.chat-attachment-options { position: absolute; z-index: 1; bottom: calc(100% + 8px); left: 0; min-width: 180px; padding: 4px; border: 1px solid var(--divider); border-radius: 12px; background: var(--bg-primary); box-shadow: 0 6px 20px rgba(17, 24, 39, 0.16); }
-.chat-attachment-options button { display: block; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text-primary); text-align: left; font: 600 13px var(--font-main); cursor: pointer; }
-.chat-attachment-options button:hover, .chat-attachment-options button:focus-visible { background: var(--surface-accent-soft); }
 .chat-btn-send { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%); color: white; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .message-image { display: block; max-width: 220px; width: 100%; border-radius: 12px; margin-bottom: 8px; object-fit: cover; }
 .pending-image-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px 0; }

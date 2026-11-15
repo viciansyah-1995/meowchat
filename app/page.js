@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import SupabaseAuthService from '../lib/services/supabase-auth.service.js';
 import ProfileService from '../lib/services/profile.service.js';
 import ProfileEditService from '../lib/services/profile-edit.service.supabase.js';
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { key: 'profile', label: 'Profile', icon: '⚙️' },
 ];
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
+const CHAT_REFRESH_INTERVAL_MS = 5000;
 
 export default function MeowTrackChat() {
   const [screen, setScreen] = useState('login');
@@ -41,7 +42,6 @@ export default function MeowTrackChat() {
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [pendingImage, setPendingImage] = useState(null);
-  const [showAttachments, setShowAttachments] = useState(false);
   const [messageInput, setMessageInput] = useState('');
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
@@ -55,11 +55,9 @@ export default function MeowTrackChat() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const chatScreenRef = useRef(null);
   const chatMessagesRef = useRef(null);
+  const followNewMessagesRef = useRef(false);
   const composerRef = useRef(null);
-  const attachmentControlsRef = useRef(null);
-  const attachmentButtonRef = useRef(null);
   const galleryInputRef = useRef(null);
-  const cameraInputRef = useRef(null);
   const olderRequestRef = useRef(null);
 
   const clearFeedback = () => {
@@ -99,7 +97,7 @@ export default function MeowTrackChat() {
   const peerId = activeChat?.otherProfile?.id;
   const userId = currentUser?.id;
 
-  const syncReadStatus = useCallback(async (page, readerId, isCurrent) => {
+  const syncReadStatus = useCallback(async (page, readerId, isCurrent, markedIds) => {
     const receipts = await InboxService.getReadStatusMap(
       page.filter((message) => message.sender_id === userId).map((message) => message.id),
       readerId
@@ -108,10 +106,14 @@ export default function MeowTrackChat() {
       setMessageReadMap((previous) => ({ ...receipts.data, ...previous }));
     }
     if (!isCurrent() || document.visibilityState !== 'visible') return;
-    const result = await InboxService.markMessagesAsRead(
-      page.filter((message) => message.sender_id !== userId).map((message) => message.id)
-    );
-    if (isCurrent() && result.success && result.data.length > 0) await loadInbox();
+    const unreadIds = page
+      .filter((message) => message.sender_id !== userId && !markedIds?.has(message.id))
+      .map((message) => message.id);
+    if (!unreadIds.length) return;
+    const result = await InboxService.markMessagesAsRead(unreadIds);
+    if (!isCurrent() || !result.success) return;
+    if (markedIds) unreadIds.forEach((id) => markedIds.add(id));
+    if (result.data.length > 0) await loadInbox();
   }, [userId, loadInbox]);
 
   useEffect(() => {
@@ -153,34 +155,47 @@ export default function MeowTrackChat() {
     if (pendingPreviewUrl) return () => URL.revokeObjectURL(pendingPreviewUrl);
   }, [pendingPreviewUrl]);
 
-  useEffect(() => {
-    if (!showAttachments) return;
-    const closeOutside = (event) => {
-      if (!attachmentControlsRef.current?.contains(event.target)) setShowAttachments(false);
-    };
-
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('focusin', closeOutside);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('focusin', closeOutside);
-    };
-  }, [showAttachments]);
+  useLayoutEffect(() => {
+    if (!followNewMessagesRef.current) return;
+    followNewMessagesRef.current = false;
+    const container = chatMessagesRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [messages]);
 
   useEffect(() => {
     if (!chatId || !peerId || !userId) return;
     let closed = false;
+    let refreshing = false;
+    const markedIds = new Set();
+    const receivedIds = new Set();
     const isCurrent = () => !closed;
 
+    const mergeMessages = (incoming) => {
+      const additions = incoming.filter((message) => !receivedIds.has(message.id));
+      if (!additions.length) return;
+      additions.forEach((message) => receivedIds.add(message.id));
+      const container = chatMessagesRef.current;
+      if (container && container.scrollHeight - container.clientHeight - container.scrollTop <= 48) {
+        followNewMessagesRef.current = true;
+      }
+      setMessages((previous) => {
+        const existingIds = new Set(previous.map((message) => message.id));
+        const newMessages = additions.filter((message) => !existingIds.has(message.id));
+        if (!newMessages.length) return [...previous];
+        return [...previous, ...newMessages].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+      });
+    };
+
     const refreshChat = async () => {
-      const result = await SupabaseChatService.getMessages(chatId);
-      if (closed) return;
-      if (result.success) {
-        setMessages((previous) => {
-          const byId = new Map([...result.data, ...previous].map((message) => [message.id, message]));
-          return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
-        });
-        await syncReadStatus(result.data, peerId, isCurrent);
+      if (closed || refreshing || document.visibilityState !== 'visible') return;
+      refreshing = true;
+      try {
+        const result = await SupabaseChatService.getMessages(chatId);
+        if (closed || !result.success) return;
+        mergeMessages(result.data);
+        await syncReadStatus(result.data, peerId, isCurrent, markedIds);
+      } finally {
+        refreshing = false;
       }
     };
 
@@ -191,8 +206,8 @@ export default function MeowTrackChat() {
     const channel = SupabaseChatService.subscribeChat(chatId, peerId, {
       onMessage(message) {
         if (closed) return;
-        setMessages((previous) => previous.some(({ id }) => id === message.id) ? previous : [...previous, message]);
-        if (message.sender_id === peerId) syncReadStatus([message], peerId, isCurrent).catch(reportError);
+        mergeMessages([message]);
+        if (message.sender_id === peerId) syncReadStatus([message], peerId, isCurrent, markedIds).catch(reportError);
         else loadInbox().catch(reportError);
       },
       onRead(receipt) {
@@ -203,16 +218,19 @@ export default function MeowTrackChat() {
       },
     });
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshChat().catch(reportError);
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    refreshChat().catch(reportError);
+    const refreshVisibleChat = () => refreshChat().catch(reportError);
+    document.addEventListener('visibilitychange', refreshVisibleChat);
+    window.addEventListener('online', refreshVisibleChat);
+    const refreshTimer = window.setInterval(refreshVisibleChat, CHAT_REFRESH_INTERVAL_MS);
+    refreshVisibleChat();
 
     return () => {
       closed = true;
+      followNewMessagesRef.current = false;
       olderRequestRef.current = null;
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('online', refreshVisibleChat);
+      document.removeEventListener('visibilitychange', refreshVisibleChat);
       SupabaseChatService.unsubscribe(channel);
     };
   }, [chatId, peerId, userId, loadInbox, syncReadStatus]);
@@ -552,7 +570,6 @@ export default function MeowTrackChat() {
     setMessageReadMap({});
     setReplyingTo(null);
     setPendingImage(null);
-    setShowAttachments(false);
     setScreen('chat');
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -641,10 +658,9 @@ export default function MeowTrackChat() {
     clearFeedback();
   };
 
-  const openImagePicker = (input) => {
-    attachmentButtonRef.current?.focus({ preventScroll: true });
-    setShowAttachments(false);
-    input.current?.click();
+  const openImagePicker = () => {
+    composerRef.current?.blur();
+    galleryInputRef.current?.click();
   };
 
   const clearPendingImage = () => setPendingImage(null);
@@ -888,7 +904,6 @@ export default function MeowTrackChat() {
   );
 
   const handleBackToChats = async () => {
-    setShowAttachments(false);
     clearPendingImage();
     setScreen('app');
     setActiveTab('chats');
@@ -993,36 +1008,10 @@ export default function MeowTrackChat() {
               </div>
             )}
             <div className="chat-input-area">
-              <div
-                ref={attachmentControlsRef}
-                className="chat-attachments"
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape' || !showAttachments) return;
-                  setShowAttachments(false);
-                  attachmentButtonRef.current?.focus({ preventScroll: true });
-                }}
-              >
-                <button
-                  ref={attachmentButtonRef}
-                  type="button"
-                  className="chat-btn chat-btn-attach"
-                  aria-label="Lampirkan foto"
-                  aria-expanded={showAttachments}
-                  aria-controls="chat-attachment-options"
-                  disabled={isUploadingImage}
-                  onClick={() => {
-                    composerRef.current?.blur();
-                    attachmentButtonRef.current?.focus({ preventScroll: true });
-                    setShowAttachments((open) => !open);
-                  }}
-                ><span aria-hidden="true">📎</span></button>
-                <div id="chat-attachment-options" className="chat-attachment-options" hidden={!showAttachments}>
-                  <button type="button" onClick={() => openImagePicker(cameraInputRef)}>Ambil foto</button>
-                  <button type="button" onClick={() => openImagePicker(galleryInputRef)}>Pilih dari galeri</button>
-                </div>
-                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handlePickImage} hidden />
-                <input ref={galleryInputRef} type="file" accept="image/*" onChange={handlePickImage} hidden />
-              </div>
+              <button type="button" className="chat-btn chat-btn-attach" aria-label="Lampirkan foto" disabled={isUploadingImage} onClick={openImagePicker}>
+                <span aria-hidden="true">📎</span>
+              </button>
+              <input ref={galleryInputRef} type="file" accept="image/*" onChange={handlePickImage} hidden />
               <textarea ref={composerRef} className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
               {pendingImage ? (
                 <button className="chat-btn chat-btn-send" onClick={handleSendImage} disabled={isUploadingImage}>{isUploadingImage ? '…' : '⬆'}</button>
