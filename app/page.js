@@ -19,6 +19,14 @@ const NAV_ITEMS = [
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
 const CHAT_REFRESH_INTERVAL_MS = 5000;
 
+function resizeComposer(composer) {
+  const scrollTop = composer.scrollTop;
+  composer.style.height = 'auto';
+  const borderHeight = composer.offsetHeight - composer.clientHeight;
+  composer.style.height = `${composer.scrollHeight + borderHeight}px`;
+  composer.scrollTop = scrollTop;
+}
+
 export default function MeowTrackChat() {
   const [screen, setScreen] = useState('login');
   const [activeTab, setActiveTab] = useState('chats');
@@ -155,6 +163,26 @@ export default function MeowTrackChat() {
   useEffect(() => {
     if (pendingPreviewUrl) return () => URL.revokeObjectURL(pendingPreviewUrl);
   }, [pendingPreviewUrl]);
+
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    if (screen !== 'chat' || !composer || CSS.supports('field-sizing', 'content')) return;
+    resizeComposer(composer);
+  }, [screen, isChatOpening, messageInput]);
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (screen !== 'chat' || !composer || CSS.supports('field-sizing', 'content')) return;
+
+    let width = composer.offsetWidth;
+    const observer = new ResizeObserver(() => {
+      if (composer.offsetWidth === width) return;
+      width = composer.offsetWidth;
+      resizeComposer(composer);
+    });
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [screen, isChatOpening]);
 
   useLayoutEffect(() => {
     if (!followNewMessagesRef.current) return;
@@ -633,11 +661,6 @@ export default function MeowTrackChat() {
     }
   };
 
-  const handleComposerKeyDown = () => {
-    // Enter sekarang dipakai untuk newline.
-    // Kirim pesan hanya lewat tombol send.
-  };
-
   const handlePickImage = (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -1017,7 +1040,7 @@ export default function MeowTrackChat() {
                 <span aria-hidden="true">📎</span>
               </button>
               <input ref={galleryInputRef} type="file" accept="image/*" onChange={handlePickImage} hidden />
-              <textarea ref={composerRef} className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+              <textarea ref={composerRef} className="composer-textarea" aria-label="Tulis pesan" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} />
               {chatId && (
                 <VoiceComposer
                   key={chatId}
