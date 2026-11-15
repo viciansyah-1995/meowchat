@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import SupabaseAuthService from '../lib/services/supabase-auth.service.js';
 import ProfileService from '../lib/services/profile.service.js';
 import ProfileEditService from '../lib/services/profile-edit.service.supabase.js';
@@ -9,6 +9,7 @@ import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
+import { VoiceComposer, VoiceMessage } from './voice-note.js';
 
 const NAV_ITEMS = [
   { key: 'chats', label: 'Chat', icon: '💬' },
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
   { key: 'profile', label: 'Profile', icon: '⚙️' },
 ];
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
+const CHAT_REFRESH_INTERVAL_MS = 5000;
 
 export default function MeowTrackChat() {
   const [screen, setScreen] = useState('login');
@@ -54,6 +56,9 @@ export default function MeowTrackChat() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const chatScreenRef = useRef(null);
   const chatMessagesRef = useRef(null);
+  const followNewMessagesRef = useRef(false);
+  const composerRef = useRef(null);
+  const galleryInputRef = useRef(null);
   const olderRequestRef = useRef(null);
 
   const clearFeedback = () => {
@@ -93,7 +98,7 @@ export default function MeowTrackChat() {
   const peerId = activeChat?.otherProfile?.id;
   const userId = currentUser?.id;
 
-  const syncReadStatus = useCallback(async (page, readerId, isCurrent) => {
+  const syncReadStatus = useCallback(async (page, readerId, isCurrent, markedIds) => {
     const receipts = await InboxService.getReadStatusMap(
       page.filter((message) => message.sender_id === userId).map((message) => message.id),
       readerId
@@ -102,10 +107,14 @@ export default function MeowTrackChat() {
       setMessageReadMap((previous) => ({ ...receipts.data, ...previous }));
     }
     if (!isCurrent() || document.visibilityState !== 'visible') return;
-    const result = await InboxService.markMessagesAsRead(
-      page.filter((message) => message.sender_id !== userId).map((message) => message.id)
-    );
-    if (isCurrent() && result.success && result.data.length > 0) await loadInbox();
+    const unreadIds = page
+      .filter((message) => message.sender_id !== userId && !markedIds?.has(message.id))
+      .map((message) => message.id);
+    if (!unreadIds.length) return;
+    const result = await InboxService.markMessagesAsRead(unreadIds);
+    if (!isCurrent() || !result.success) return;
+    if (markedIds) unreadIds.forEach((id) => markedIds.add(id));
+    if (result.data.length > 0) await loadInbox();
   }, [userId, loadInbox]);
 
   useEffect(() => {
@@ -114,37 +123,80 @@ export default function MeowTrackChat() {
     const chatScreen = chatScreenRef.current;
     if (!viewport || !chatScreen) return;
 
-    // The keyboard can shrink or pan the visible viewport without resizing the page.
+    let frame = 0;
     const fitChatToViewport = () => {
-      chatScreen.style.top = `${viewport.offsetTop}px`;
+      const top = Math.max(0, viewport.offsetTop);
+      chatScreen.style.top = `${top}px`;
       chatScreen.style.height = `${viewport.height}px`;
+      const keyboardInset = window.innerHeight - top - viewport.height;
+      chatScreen.toggleAttribute('data-keyboard-open', keyboardInset > 100 && viewport.scale === 1);
+    };
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitChatToViewport);
     };
 
     fitChatToViewport();
-    viewport.addEventListener('resize', fitChatToViewport);
-    viewport.addEventListener('scroll', fitChatToViewport);
+    viewport.addEventListener('resize', scheduleFit);
+    viewport.addEventListener('scroll', scheduleFit);
+    window.addEventListener('resize', scheduleFit);
     return () => {
-      viewport.removeEventListener('resize', fitChatToViewport);
-      viewport.removeEventListener('scroll', fitChatToViewport);
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener('resize', scheduleFit);
+      viewport.removeEventListener('scroll', scheduleFit);
+      window.removeEventListener('resize', scheduleFit);
       chatScreen.style.removeProperty('top');
       chatScreen.style.removeProperty('height');
+      chatScreen.removeAttribute('data-keyboard-open');
     };
   }, [screen]);
+
+  const pendingPreviewUrl = pendingImage?.previewUrl;
+  useEffect(() => {
+    if (pendingPreviewUrl) return () => URL.revokeObjectURL(pendingPreviewUrl);
+  }, [pendingPreviewUrl]);
+
+  useLayoutEffect(() => {
+    if (!followNewMessagesRef.current) return;
+    followNewMessagesRef.current = false;
+    const container = chatMessagesRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [messages]);
 
   useEffect(() => {
     if (!chatId || !peerId || !userId) return;
     let closed = false;
+    let refreshing = false;
+    const markedIds = new Set();
+    const receivedIds = new Set();
     const isCurrent = () => !closed;
 
+    const mergeMessages = (incoming) => {
+      const additions = incoming.filter((message) => !receivedIds.has(message.id));
+      if (!additions.length) return;
+      additions.forEach((message) => receivedIds.add(message.id));
+      const container = chatMessagesRef.current;
+      if (container && container.scrollHeight - container.clientHeight - container.scrollTop <= 48) {
+        followNewMessagesRef.current = true;
+      }
+      setMessages((previous) => {
+        const existingIds = new Set(previous.map((message) => message.id));
+        const newMessages = additions.filter((message) => !existingIds.has(message.id));
+        if (!newMessages.length) return [...previous];
+        return [...previous, ...newMessages].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+      });
+    };
+
     const refreshChat = async () => {
-      const result = await SupabaseChatService.getMessages(chatId);
-      if (closed) return;
-      if (result.success) {
-        setMessages((previous) => {
-          const byId = new Map([...result.data, ...previous].map((message) => [message.id, message]));
-          return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
-        });
-        await syncReadStatus(result.data, peerId, isCurrent);
+      if (closed || refreshing || document.visibilityState !== 'visible') return;
+      refreshing = true;
+      try {
+        const result = await SupabaseChatService.getMessages(chatId);
+        if (closed || !result.success) return;
+        mergeMessages(result.data);
+        await syncReadStatus(result.data, peerId, isCurrent, markedIds);
+      } finally {
+        refreshing = false;
       }
     };
 
@@ -155,8 +207,8 @@ export default function MeowTrackChat() {
     const channel = SupabaseChatService.subscribeChat(chatId, peerId, {
       onMessage(message) {
         if (closed) return;
-        setMessages((previous) => previous.some(({ id }) => id === message.id) ? previous : [...previous, message]);
-        if (message.sender_id === peerId) syncReadStatus([message], peerId, isCurrent).catch(reportError);
+        mergeMessages([message]);
+        if (message.sender_id === peerId) syncReadStatus([message], peerId, isCurrent, markedIds).catch(reportError);
         else loadInbox().catch(reportError);
       },
       onRead(receipt) {
@@ -167,16 +219,19 @@ export default function MeowTrackChat() {
       },
     });
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshChat().catch(reportError);
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    refreshChat().catch(reportError);
+    const refreshVisibleChat = () => refreshChat().catch(reportError);
+    document.addEventListener('visibilitychange', refreshVisibleChat);
+    window.addEventListener('online', refreshVisibleChat);
+    const refreshTimer = window.setInterval(refreshVisibleChat, CHAT_REFRESH_INTERVAL_MS);
+    refreshVisibleChat();
 
     return () => {
       closed = true;
+      followNewMessagesRef.current = false;
       olderRequestRef.current = null;
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('online', refreshVisibleChat);
+      document.removeEventListener('visibilitychange', refreshVisibleChat);
       SupabaseChatService.unsubscribe(channel);
     };
   }, [chatId, peerId, userId, loadInbox, syncReadStatus]);
@@ -604,14 +659,12 @@ export default function MeowTrackChat() {
     clearFeedback();
   };
 
-  const clearPendingImage = () => {
-    setPendingImage((prev) => {
-      if (prev?.previewUrl) {
-        URL.revokeObjectURL(prev.previewUrl);
-      }
-      return null;
-    });
+  const openImagePicker = () => {
+    composerRef.current?.blur();
+    galleryInputRef.current?.click();
   };
+
+  const clearPendingImage = () => setPendingImage(null);
 
   const handleSendImage = async () => {
     clearFeedback();
@@ -646,6 +699,7 @@ export default function MeowTrackChat() {
 
   const getReplyPreviewText = (message) => {
     if (!message) return '';
+    if (message.message_type === 'voice') return 'Voice note';
     return (message.content || '').trim().slice(0, 90) || 'Pesan';
   };
 
@@ -752,7 +806,7 @@ export default function MeowTrackChat() {
                   <div className="contact-avatar">{(targetProfile?.display_name || targetProfile?.username || '?').slice(0, 1).toUpperCase()}</div>
                   <div className="contact-info">
                     <div className="contact-name">{targetProfile?.display_name || 'Unknown'}</div>
-                    <div className="contact-preview">{item.lastMessage?.content || 'Belum ada pesan'}</div>
+                    <div className="contact-preview">{item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan'}</div>
                   </div>
                   <div className="contact-time">
                     {item.lastMessage?.created_at ? formatTime(new Date(item.lastMessage.created_at).getTime()) : ''}
@@ -852,6 +906,7 @@ export default function MeowTrackChat() {
   );
 
   const handleBackToChats = async () => {
+    clearPendingImage();
     setScreen('app');
     setActiveTab('chats');
     setActiveChat(null);
@@ -914,6 +969,9 @@ export default function MeowTrackChat() {
                   {msg.message_type === 'image' && msg.image_url ? (
                     <img src={msg.image_url} alt="Chat image" className="message-image" />
                   ) : null}
+                  {chatId && msg.message_type === 'voice' && msg.voice_path && (
+                    <VoiceMessage path={msg.voice_path} duration={msg.voice_duration_seconds} />
+                  )}
                   {msg.content && <p className="message-content">{msg.content}</p>}
                   <div className="message-meta">
                     <time dateTime={msg.created_at}>{formatTime(new Date(msg.created_at).getTime())}</time>
@@ -955,11 +1013,23 @@ export default function MeowTrackChat() {
               </div>
             )}
             <div className="chat-input-area">
-              <label className="chat-btn chat-btn-attach" title="Tambah foto">
-                📷
-                <input type="file" accept="image/*" capture="environment" onChange={handlePickImage} hidden />
-              </label>
-              <textarea className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : pendingImage ? 'Tambahkan caption (opsional)...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+              <button type="button" className="chat-btn chat-btn-attach" aria-label="Lampirkan foto" disabled={isUploadingImage} onClick={openImagePicker}>
+                <span aria-hidden="true">📎</span>
+              </button>
+              <input ref={galleryInputRef} type="file" accept="image/*" onChange={handlePickImage} hidden />
+              <textarea ref={composerRef} className="composer-textarea" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={handleComposerKeyDown} />
+              {chatId && (
+                <VoiceComposer
+                  key={chatId}
+                  chatId={chatId}
+                  replyTo={replyingTo?.id}
+                  disabled={isUploadingImage || isSendingMessage}
+                  onSent={() => {
+                    setReplyingTo(null);
+                    loadInbox().catch(() => {});
+                  }}
+                />
+              )}
               {pendingImage ? (
                 <button className="chat-btn chat-btn-send" onClick={handleSendImage} disabled={isUploadingImage}>{isUploadingImage ? '…' : '⬆'}</button>
               ) : (
