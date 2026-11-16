@@ -9,7 +9,9 @@ import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
-import { VoiceComposer, VoiceMessage } from './voice-note.js';
+import ChatComposer from './chat-composer.js';
+import { FileMessage } from './file-message.js';
+import { VoiceMessage } from './voice-note.js';
 
 const NAV_ITEMS = [
   { key: 'chats', label: 'Chat', icon: '💬' },
@@ -18,14 +20,6 @@ const NAV_ITEMS = [
 ];
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
 const CHAT_REFRESH_INTERVAL_MS = 5000;
-
-function resizeComposer(composer) {
-  const scrollTop = composer.scrollTop;
-  composer.style.height = 'auto';
-  const borderHeight = composer.offsetHeight - composer.clientHeight;
-  composer.style.height = `${composer.scrollHeight + borderHeight}px`;
-  composer.scrollTop = scrollTop;
-}
 
 export default function MeowTrackChat() {
   const [screen, setScreen] = useState('login');
@@ -50,7 +44,6 @@ export default function MeowTrackChat() {
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
-  const [pendingImage, setPendingImage] = useState(null);
   const [messageInput, setMessageInput] = useState('');
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
@@ -59,14 +52,13 @@ export default function MeowTrackChat() {
   const [isInboxLoading, setIsInboxLoading] = useState(false);
   const [isChatOpening, setIsChatOpening] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const chatScreenRef = useRef(null);
   const chatMessagesRef = useRef(null);
   const followNewMessagesRef = useRef(false);
-  const composerRef = useRef(null);
-  const galleryInputRef = useRef(null);
+  const keepBottomRef = useRef(true);
+  const messageViewportHeightRef = useRef(0);
   const olderRequestRef = useRef(null);
 
   const clearFeedback = () => {
@@ -159,30 +151,18 @@ export default function MeowTrackChat() {
     };
   }, [screen]);
 
-  const pendingPreviewUrl = pendingImage?.previewUrl;
-  useEffect(() => {
-    if (pendingPreviewUrl) return () => URL.revokeObjectURL(pendingPreviewUrl);
-  }, [pendingPreviewUrl]);
-
   useLayoutEffect(() => {
-    const composer = composerRef.current;
-    if (screen !== 'chat' || !composer || CSS.supports('field-sizing', 'content')) return;
-    resizeComposer(composer);
-  }, [screen, isChatOpening, messageInput]);
-
-  useEffect(() => {
-    const composer = composerRef.current;
-    if (screen !== 'chat' || !composer || CSS.supports('field-sizing', 'content')) return;
-
-    let width = composer.offsetWidth;
+    const container = chatMessagesRef.current;
+    if (!chatId || isChatOpening || !container) return;
+    keepBottomRef.current = true;
+    messageViewportHeightRef.current = container.clientHeight;
     const observer = new ResizeObserver(() => {
-      if (composer.offsetWidth === width) return;
-      width = composer.offsetWidth;
-      resizeComposer(composer);
+      messageViewportHeightRef.current = container.clientHeight;
+      if (keepBottomRef.current) container.scrollTop = container.scrollHeight;
     });
-    observer.observe(composer);
+    observer.observe(container);
     return () => observer.disconnect();
-  }, [screen, isChatOpening]);
+  }, [chatId, isChatOpening]);
 
   useLayoutEffect(() => {
     if (!followNewMessagesRef.current) return;
@@ -486,7 +466,6 @@ export default function MeowTrackChat() {
     setActiveChat(null);
     setMessages([]);
     setReplyingTo(null);
-    setPendingImage(null);
     setScreen('login');
     setSuccessMessage('Logout berhasil');
   };
@@ -598,7 +577,6 @@ export default function MeowTrackChat() {
     setIsLoadingOlder(false);
     setMessageReadMap({});
     setReplyingTo(null);
-    setPendingImage(null);
     setScreen('chat');
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -608,7 +586,6 @@ export default function MeowTrackChat() {
     if (IS_DEBUG_MODE) {
       setDebugInfo((prev) => `${prev}\nchat ready => ${chat.id}\nmessageCount => ${(messagesResult.data || []).length}`);
     }
-    setSuccessMessage(chatResult.created ? 'Direct chat baru dibuat' : 'Direct chat dibuka');
     setIsChatOpening(false);
   };
 
@@ -661,68 +638,10 @@ export default function MeowTrackChat() {
     }
   };
 
-  const handlePickImage = (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setErrorMessage('File harus berupa gambar');
-      return;
-    }
-
-    const maxBytes = 10 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      setErrorMessage('Ukuran gambar maksimal 10 MB');
-      return;
-    }
-
-    const previewUrl = URL.createObjectURL(file);
-    setPendingImage({ file, previewUrl, name: file.name, size: file.size });
-    clearFeedback();
-  };
-
-  const openImagePicker = () => {
-    composerRef.current?.blur();
-    galleryInputRef.current?.click();
-  };
-
-  const clearPendingImage = () => setPendingImage(null);
-
-  const handleSendImage = async () => {
-    clearFeedback();
-    if (!activeChat?.chat?.id || !pendingImage?.file || isUploadingImage) return;
-
-    setIsUploadingImage(true);
-    try {
-      const uploadResult = await SupabaseChatService.uploadChatImage(pendingImage.file);
-      if (!uploadResult.success) {
-        setErrorMessage(uploadResult.error?.message || 'Gagal upload gambar');
-        return;
-      }
-
-      const sendResult = await SupabaseChatService.sendImageMessage(
-        activeChat.chat.id,
-        uploadResult.data.publicUrl,
-        replyingTo?.id || null
-      );
-
-      if (!sendResult.success) {
-        setErrorMessage(sendResult.error?.message || 'Gagal kirim gambar');
-        return;
-      }
-
-      clearPendingImage();
-      setReplyingTo(null);
-      await loadInbox();
-    } finally {
-      setIsUploadingImage(false);
-    }
-  };
-
   const getReplyPreviewText = (message) => {
     if (!message) return '';
     if (message.message_type === 'voice') return 'Voice note';
+    if (message.message_type === 'file') return message.file_name;
     return (message.content || '').trim().slice(0, 90) || 'Pesan';
   };
 
@@ -829,7 +748,7 @@ export default function MeowTrackChat() {
                   <div className="contact-avatar">{(targetProfile?.display_name || targetProfile?.username || '?').slice(0, 1).toUpperCase()}</div>
                   <div className="contact-info">
                     <div className="contact-name">{targetProfile?.display_name || 'Unknown'}</div>
-                    <div className="contact-preview">{item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan'}</div>
+                    <div className="contact-preview">{item.lastMessage?.file_name || (item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan')}</div>
                   </div>
                   <div className="contact-time">
                     {item.lastMessage?.created_at ? formatTime(new Date(item.lastMessage.created_at).getTime()) : ''}
@@ -929,7 +848,6 @@ export default function MeowTrackChat() {
   );
 
   const handleBackToChats = async () => {
-    clearPendingImage();
     setScreen('app');
     setActiveTab('chats');
     setActiveChat(null);
@@ -954,7 +872,7 @@ export default function MeowTrackChat() {
             <p>@{activeChat?.otherProfile?.username}</p>
           </div>
         </header>
-        <Feedback />
+        {errorMessage && <div className="error-message" role="alert">{errorMessage}</div>}
         {isChatOpening ? (
           <div className="chat-loading-shell">
             <div className="chat-loading-header">
@@ -966,7 +884,11 @@ export default function MeowTrackChat() {
             </div>
           </div>
         ) : (
-        <div className="chat-messages" ref={chatMessagesRef}>
+        <div className="chat-messages" ref={chatMessagesRef} onScroll={(event) => {
+          const { scrollHeight, clientHeight, scrollTop } = event.currentTarget;
+          if (clientHeight !== messageViewportHeightRef.current) return;
+          keepBottomRef.current = scrollHeight - clientHeight - scrollTop <= 48;
+        }}>
           {olderCursor && (
             <button type="button" className="btn btn-secondary chat-load-older" onClick={loadOlderMessages} disabled={isLoadingOlder}>
               {isLoadingOlder ? 'Memuat riwayat…' : 'Muat pesan sebelumnya'}
@@ -995,6 +917,9 @@ export default function MeowTrackChat() {
                   {chatId && msg.message_type === 'voice' && msg.voice_path && (
                     <VoiceMessage path={msg.voice_path} duration={msg.voice_duration_seconds} />
                   )}
+                  {chatId && msg.message_type === 'file' && msg.file_path && (
+                    <FileMessage path={msg.file_path} name={msg.file_name} />
+                  )}
                   {msg.content && <p className="message-content">{msg.content}</p>}
                   <div className="message-meta">
                     <time dateTime={msg.created_at}>{formatTime(new Date(msg.created_at).getTime())}</time>
@@ -1014,52 +939,31 @@ export default function MeowTrackChat() {
           )}
         </div>
         )}
-        {!isChatOpening && (
-          <div className="chat-input-area-wrapper">
+        {!isChatOpening && chatId && (
+          <ChatComposer
+            key={chatId}
+            chatId={chatId}
+            replyTo={replyingTo?.id}
+            value={messageInput}
+            onChange={setMessageInput}
+            onSendText={handleSendMessage}
+            sendingText={isSendingMessage}
+            onError={setErrorMessage}
+            onSent={() => {
+              setReplyingTo(null);
+              loadInbox().catch(() => {});
+            }}
+          >
             {replyingTo && (
               <div className="replying-bar">
                 <div className="replying-copy">
                   <div className="replying-label">Membalas {getReplyAuthorLabel(replyingTo)}</div>
                   <div className="replying-snippet">{getReplyPreviewText(replyingTo)}</div>
                 </div>
-                <button className="replying-close" type="button" onClick={() => setReplyingTo(null)}>×</button>
+                <button className="replying-close" type="button" aria-label="Batalkan balasan" onClick={() => setReplyingTo(null)}>×</button>
               </div>
             )}
-            {pendingImage && (
-              <div className="pending-image-bar">
-                <img src={pendingImage.previewUrl} alt="Preview upload" className="pending-image-preview" />
-                <div className="pending-image-copy">
-                  <div className="replying-label">Siap dikirim</div>
-                  <div className="replying-snippet">{pendingImage.name}</div>
-                </div>
-                <button className="replying-close" type="button" onClick={clearPendingImage}>×</button>
-              </div>
-            )}
-            <div className="chat-input-area">
-              <button type="button" className="chat-btn chat-btn-attach" aria-label="Lampirkan foto" disabled={isUploadingImage} onClick={openImagePicker}>
-                <span aria-hidden="true">📎</span>
-              </button>
-              <input ref={galleryInputRef} type="file" accept="image/*" onChange={handlePickImage} hidden />
-              <textarea ref={composerRef} className="composer-textarea" aria-label="Tulis pesan" rows={1} placeholder={replyingTo ? 'Tulis balasan...' : 'Ketik pesan...'} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} />
-              {chatId && (
-                <VoiceComposer
-                  key={chatId}
-                  chatId={chatId}
-                  replyTo={replyingTo?.id}
-                  disabled={isUploadingImage || isSendingMessage}
-                  onSent={() => {
-                    setReplyingTo(null);
-                    loadInbox().catch(() => {});
-                  }}
-                />
-              )}
-              {pendingImage ? (
-                <button className="chat-btn chat-btn-send" onClick={handleSendImage} disabled={isUploadingImage}>{isUploadingImage ? '…' : '⬆'}</button>
-              ) : (
-                <button className="chat-btn chat-btn-send" onClick={handleSendMessage} disabled={isSendingMessage}>{isSendingMessage ? '…' : '➤'}</button>
-              )}
-            </div>
-          </div>
+          </ChatComposer>
         )}
       </div>
     </div>
