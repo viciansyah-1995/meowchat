@@ -10,6 +10,50 @@ const VOICE_FORMATS = {
   'audio/ogg': 'ogg',
 };
 
+// Sent messages and the draft preview share playback with the recorder.
+let activePlayer = null;
+let pendingPlayback = null;
+let recordingOwner = null;
+
+function pausePlayback() {
+  pendingPlayback = null;
+  activePlayer?.pause();
+  activePlayer = null;
+}
+
+function claimPlayback(player) {
+  if (recordingOwner) {
+    player.pause();
+    return false;
+  }
+  if (activePlayer !== player) {
+    pausePlayback();
+    activePlayer = player;
+  }
+  return true;
+}
+
+function VoiceAudio({ src, playbackRequest }) {
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    const player = audioRef.current;
+    if (player && playbackRequest && pendingPlayback === playbackRequest && claimPlayback(player)) {
+      // If the browser requires another gesture after download, controls remain available.
+      player.play().catch(() => {});
+    }
+    return () => {
+      if (player && activePlayer === player) pausePlayback();
+    };
+  }, [src, playbackRequest]);
+
+  if (!src) return null;
+  return <audio ref={audioRef} controls src={src} preload="metadata" onPlay={(event) => {
+    const player = event.currentTarget;
+    if (!player.paused) claimPlayback(player);
+  }} />;
+}
+
 function showDuration(seconds) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
@@ -37,15 +81,21 @@ export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
   }, [previewUrl]);
 
   async function record() {
-    if (disabled || recordingRef.current || draft) return;
+    if (disabled || recordingOwner || recordingRef.current || draft) return;
     setError('');
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setError('Browser ini belum mendukung perekaman suara.');
       return;
     }
 
-    const attempt = { cancel: () => { recordingRef.current = null; } };
+    const finishAttempt = () => {
+      if (recordingOwner === attempt) recordingOwner = null;
+      if (recordingRef.current === attempt) recordingRef.current = null;
+    };
+    const attempt = { cancel: finishAttempt };
     recordingRef.current = attempt;
+    recordingOwner = attempt;
+    pausePlayback();
     setPhase('requesting');
     let stream;
     try {
@@ -84,7 +134,7 @@ export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
       recorder.onstop = () => {
         release();
         if (recordingRef.current !== attempt) return;
-        recordingRef.current = null;
+        finishAttempt();
         setPhase('idle');
         const type = (recorder.mimeType || mimeType).split(';')[0];
         const blob = new Blob(chunks, { type });
@@ -108,9 +158,12 @@ export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
       document.addEventListener('visibilitychange', onVisibility);
       attempt.stop = stop;
       attempt.cancel = () => {
-        recordingRef.current = null;
-        if (recorder.state !== 'inactive') recorder.stop();
-        release();
+        try {
+          if (recorder.state !== 'inactive') recorder.stop();
+        } finally {
+          release();
+          finishAttempt();
+        }
       };
       setElapsed(0);
       setPhase('recording');
@@ -118,7 +171,7 @@ export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
     } catch (cause) {
       stream?.getTracks().forEach((track) => track.stop());
       if (recordingRef.current !== attempt) return;
-      recordingRef.current = null;
+      finishAttempt();
       setPhase('idle');
       setError(cause.name === 'NotAllowedError' ? 'Izinkan akses mikrofon untuk merekam.' : 'Mikrofon tidak bisa digunakan.');
     }
@@ -158,7 +211,7 @@ export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
           {draft && (
             <>
               <p>Pratinjau voice note · {showDuration(draft.duration)}</p>
-              <audio controls src={draft.url} preload="metadata" />
+              <VoiceAudio src={draft.url} />
               <div className="voice-actions">
                 <button type="button" className="btn btn-secondary" disabled={phase === 'sending'} onClick={() => { setDraft(null); setError(''); }}>Buang</button>
                 <button type="button" className="btn btn-primary" disabled={disabled || phase === 'sending'} onClick={send}>{phase === 'sending' ? 'Mengirim…' : 'Kirim voice note'}</button>
@@ -174,7 +227,8 @@ export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
 }
 
 export function VoiceMessage({ path, duration }) {
-  const [url, setUrl] = useState('');
+  const [audio, setAudio] = useState(null);
+  const url = audio?.url;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const aliveRef = useRef(false);
@@ -189,13 +243,18 @@ export function VoiceMessage({ path, duration }) {
   }, [url]);
 
   async function load() {
+    if (recordingOwner) return;
+    pausePlayback();
+    const request = Symbol();
+    pendingPlayback = request;
     setLoading(true);
     setError(false);
     try {
       const result = await SupabaseChatService.downloadVoice(path);
       if (result.error || !result.data?.size) throw result.error;
-      if (aliveRef.current) setUrl(URL.createObjectURL(result.data));
+      if (aliveRef.current) setAudio({ url: URL.createObjectURL(result.data), request });
     } catch {
+      if (pendingPlayback === request) pendingPlayback = null;
       if (aliveRef.current) setError(true);
     } finally {
       if (aliveRef.current) setLoading(false);
@@ -205,7 +264,8 @@ export function VoiceMessage({ path, duration }) {
   return (
     <div className="voice-message" onClick={(event) => event.stopPropagation()}>
       <p>Voice note · {showDuration(duration)}</p>
-      {url ? <audio controls autoPlay src={url} /> : (
+      <VoiceAudio src={url} playbackRequest={audio?.request} />
+      {!url && (
         <button type="button" className="btn btn-secondary" onClick={load} disabled={loading}>
           {loading ? 'Memuat…' : error ? 'Coba putar lagi' : 'Putar'}
         </button>
