@@ -58,7 +58,7 @@ function showDuration(seconds) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
+export function VoiceComposer({ chatId, disabled, replyTo, onSent, children }) {
   const [phase, setPhase] = useState('idle');
   const [elapsed, setElapsed] = useState(0);
   const [draft, setDraft] = useState(null);
@@ -196,34 +196,42 @@ export function VoiceComposer({ chatId, disabled, replyTo, onSent }) {
     }
   }
 
-  return (
-    <div className="voice-composer">
-      <button type="button" className="chat-btn chat-btn-attach" aria-label={phase === 'recording' ? 'Hentikan rekaman' : 'Rekam voice note'}
-        disabled={phase !== 'recording' && (disabled || phase !== 'idle' || Boolean(draft))}
-        onClick={() => phase === 'recording' ? recordingRef.current?.stop() : record()}>
-        <span aria-hidden="true">{phase === 'recording' ? '■' : '🎙️'}</span>
-      </button>
-      {(phase !== 'idle' || draft || error) && (
-        <div className="voice-panel">
-          {phase === 'requesting' && <p role="status">Menunggu izin mikrofon…</p>}
-          {phase === 'recording' && <p>Merekam {showDuration(elapsed)} / 1:00</p>}
-          {phase === 'finishing' && <p role="status">Menyiapkan rekaman…</p>}
-          {draft && (
-            <>
-              <p>Pratinjau voice note · {showDuration(draft.duration)}</p>
-              <VoiceAudio src={draft.url} />
-              <div className="voice-actions">
-                <button type="button" className="btn btn-secondary" disabled={phase === 'sending'} onClick={() => { setDraft(null); setError(''); }}>Buang</button>
-                <button type="button" className="btn btn-primary" disabled={disabled || phase === 'sending'} onClick={send}>{phase === 'sending' ? 'Mengirim…' : 'Kirim voice note'}</button>
-              </div>
-            </>
-          )}
-          {error && <p className="voice-error" role="alert">{error}</p>}
-          {error && !draft && <button type="button" className="btn btn-secondary" onClick={() => setError('')}>Tutup</button>}
+  const panel = (phase !== 'idle' || draft || error) && (
+    <div className="voice-panel">
+      {phase === 'requesting' && (
+        <div className="voice-status">
+          <p role="status">Menunggu izin mikrofon…</p>
+          <button type="button" className="btn btn-secondary" onClick={() => {
+            recordingRef.current?.cancel();
+            setPhase('idle');
+          }}>Batal</button>
         </div>
       )}
+      {phase === 'recording' && (
+        <div className="voice-status">
+          <p>Merekam {showDuration(elapsed)} / 1:00</p>
+          <button type="button" className="btn btn-secondary" onClick={() => recordingRef.current?.stop()}>
+            Hentikan rekaman
+          </button>
+        </div>
+      )}
+      {phase === 'finishing' && <p role="status">Menyiapkan rekaman…</p>}
+      {draft && (
+        <>
+          <p>Pratinjau voice note · {showDuration(draft.duration)}</p>
+          <VoiceAudio src={draft.url} />
+          <div className="voice-actions">
+            <button type="button" className="btn btn-secondary" disabled={phase === 'sending'} onClick={() => { setDraft(null); setError(''); }}>Buang</button>
+            <button type="button" className="btn btn-primary" disabled={disabled || phase === 'sending'} onClick={send}>{phase === 'sending' ? 'Mengirim…' : 'Kirim voice note'}</button>
+          </div>
+        </>
+      )}
+      {error && <p className="voice-error" role="alert">{error}</p>}
+      {error && !draft && <button type="button" className="btn btn-secondary" onClick={() => setError('')}>Tutup</button>}
     </div>
   );
+
+  return children({ record, panel });
 }
 
 export function VoiceMessage({ path, duration }) {
