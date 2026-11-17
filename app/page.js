@@ -10,14 +10,21 @@ import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
+import ChatPhotoViewer from './chat-photo-viewer.js';
 import { FileMessage } from './file-message.js';
 import { VoiceMessage } from './voice-note.js';
 
 const NAV_ITEMS = [
   { key: 'chats', label: 'Chat', icon: '💬' },
   { key: 'contacts', label: 'Contact', icon: '👥' },
-  { key: 'profile', label: 'Profile', icon: '⚙️' },
+  { key: 'profile', label: 'Pengaturan', icon: '⚙️' },
 ];
+const CHAT_THEMES = [
+  { id: 'system', label: 'Bawaan sistem' },
+  { id: 'ocean', label: 'Laut & Mint' },
+  { id: 'sunset', label: 'Senja & Lavender' },
+];
+const CHAT_THEME_KEY = 'meowchat-chat-theme';
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
 const CHAT_REFRESH_INTERVAL_MS = 5000;
 
@@ -45,6 +52,8 @@ export default function MeowTrackChat() {
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [messageInput, setMessageInput] = useState('');
+  const [chatTheme, setChatTheme] = useState('system');
+  const [viewedPhoto, setViewedPhoto] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
@@ -60,6 +69,24 @@ export default function MeowTrackChat() {
   const keepBottomRef = useRef(true);
   const messageViewportHeightRef = useRef(0);
   const olderRequestRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const savedTheme = window.localStorage.getItem(CHAT_THEME_KEY);
+      if (CHAT_THEMES.some(({ id }) => id === savedTheme)) setChatTheme(savedTheme);
+    } catch {
+      // A browser that blocks storage can still change the theme for this visit.
+    }
+  }, []);
+
+  const selectChatTheme = (theme) => {
+    setChatTheme(theme);
+    try {
+      window.localStorage.setItem(CHAT_THEME_KEY, theme);
+    } catch {
+      // Keep the theme active for this visit.
+    }
+  };
 
   const clearFeedback = () => {
     setErrorMessage('');
@@ -814,6 +841,21 @@ export default function MeowTrackChat() {
 
   const renderProfileTab = () => (
     <div className="contacts-header">
+      <h3 style={{ marginBottom: 16 }}>Pengaturan</h3>
+      <fieldset className="chat-theme-picker">
+        <legend>Tema chat</legend>
+        {CHAT_THEMES.map(({ id, label }) => (
+          <label key={id} className="chat-theme-option" data-chat-theme={id}>
+            <input type="radio" name="chat-theme" checked={chatTheme === id} onChange={() => selectChatTheme(id)} />
+            <span>{label}</span>
+            <span className="chat-theme-swatches" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </label>
+        ))}
+      </fieldset>
       <h3 style={{ marginBottom: 16 }}>Profile</h3>
       <form className="auth-form" onSubmit={handleProfileSave}>
         <div className="input-group"><label>Username</label><input type="text" value={profileForm.username} onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })} /></div>
@@ -858,7 +900,7 @@ export default function MeowTrackChat() {
   };
 
   const renderChat = () => (
-    <div ref={chatScreenRef} className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen">
+    <div ref={chatScreenRef} className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen" data-chat-theme={chatTheme}>
       <div className="chat-container">
         <header className="chat-header">
           <button type="button" className="chat-back" onClick={handleBackToChats}>
@@ -912,7 +954,13 @@ export default function MeowTrackChat() {
                     );
                   })() : null}
                   {msg.message_type === 'image' && msg.image_url ? (
-                    <img src={msg.image_url} alt="Chat image" className="message-image" />
+                    <button type="button" className="message-image-button" aria-label="Buka foto layar penuh" onClick={(event) => {
+                      event.stopPropagation();
+                      event.currentTarget.focus({ preventScroll: true });
+                      setViewedPhoto({ chatId, src: msg.image_url });
+                    }}>
+                      <img src={msg.image_url} alt="Foto chat" className="message-image" />
+                    </button>
                   ) : null}
                   {chatId && msg.message_type === 'voice' && msg.voice_path && (
                     <VoiceMessage path={msg.voice_path} duration={msg.voice_duration_seconds} />
@@ -975,6 +1023,9 @@ export default function MeowTrackChat() {
       {renderRegister()}
       {renderAppHome()}
       {renderChat()}
+      {chatId && viewedPhoto?.chatId === chatId && (
+        <ChatPhotoViewer src={viewedPhoto.src} onClose={() => setViewedPhoto(null)} />
+      )}
     </div>
   );
 }
