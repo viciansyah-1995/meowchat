@@ -6,11 +6,12 @@ export const maxDuration = 20;
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 
 function pushConfig() {
-  const { WEB_PUSH_PUBLIC_KEY, WEB_PUSH_PRIVATE_KEY, WEB_PUSH_SUBJECT, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL } = process.env;
-  if (!WEB_PUSH_PUBLIC_KEY || !WEB_PUSH_PRIVATE_KEY || !WEB_PUSH_SUBJECT || !SUPABASE_SERVICE_ROLE_KEY || !NEXT_PUBLIC_SUPABASE_URL) return null;
+  const { WEB_PUSH_PUBLIC_KEY, WEB_PUSH_PRIVATE_KEY, WEB_PUSH_SUBJECT, PUSH_SERVER_SECRET, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_SUPABASE_URL } = process.env;
+  if (!WEB_PUSH_PUBLIC_KEY || !WEB_PUSH_PRIVATE_KEY || !WEB_PUSH_SUBJECT || !PUSH_SERVER_SECRET || !NEXT_PUBLIC_SUPABASE_ANON_KEY || !NEXT_PUBLIC_SUPABASE_URL) return null;
   return {
     url: NEXT_PUBLIC_SUPABASE_URL,
-    serviceKey: SUPABASE_SERVICE_ROLE_KEY,
+    anonKey: NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    serverSecret: PUSH_SERVER_SECRET,
     vapid: { subject: WEB_PUSH_SUBJECT, publicKey: WEB_PUSH_PUBLIC_KEY, privateKey: WEB_PUSH_PRIVATE_KEY },
   };
 }
@@ -37,12 +38,13 @@ async function authorize(request) {
   if (!config) return { response: json({ error: 'Notifikasi belum dikonfigurasi.' }, 503) };
   const token = request.headers.get('authorization')?.match(/^Bearer (\S+)$/i)?.[1];
   if (!token) return { response: json({ error: 'Silakan masuk kembali.' }, 401) };
-  const supabase = createClient(config.url, config.serviceKey, {
+  const supabase = createClient(config.url, config.anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return { response: json({ error: 'Silakan masuk kembali.' }, 401) };
-  return { config, supabase, userId: data.user.id };
+  return { config, supabase };
 }
 
 export function GET() {
@@ -60,13 +62,10 @@ export async function PUT(request) {
     return json({ error: 'Langganan notifikasi tidak valid.' }, 400);
   }
 
-  const { error } = await auth.supabase.from('push_subscriptions').upsert({
-    endpoint,
-    profile_id: auth.userId,
-    p256dh: keys.p256dh,
-    auth_key: keys.auth,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'endpoint' });
+  const { error } = await auth.supabase.rpc('manage_push_subscription', {
+    p_server_secret: auth.config.serverSecret, p_action: 'subscribe',
+    p_endpoint: endpoint, p_p256dh: keys.p256dh, p_auth_key: keys.auth,
+  });
   return error ? json({ error: 'Gagal menyimpan notifikasi.' }, 500) : json({ enabled: true });
 }
 
@@ -76,8 +75,9 @@ export async function DELETE(request) {
   const body = await request.json().catch(() => null);
   if (!validEndpoint(body?.endpoint)) return json({ error: 'Langganan tidak valid.' }, 400);
 
-  const { error } = await auth.supabase.from('push_subscriptions').delete()
-    .eq('endpoint', body.endpoint).eq('profile_id', auth.userId);
+  const { error } = await auth.supabase.rpc('manage_push_subscription', {
+    p_server_secret: auth.config.serverSecret, p_action: 'unsubscribe', p_endpoint: body.endpoint,
+  });
   return error ? json({ error: 'Gagal menonaktifkan notifikasi.' }, 500) : json({ enabled: false });
 }
 
@@ -91,7 +91,7 @@ export async function POST(request) {
 
   const { data, error } = await auth.supabase.rpc('claim_chat_ping', {
     p_chat_id: body.chatId,
-    p_sender_id: auth.userId,
+    p_server_secret: auth.config.serverSecret,
   });
   if (error || !data) return json({ error: 'Gagal mengirim PING.' }, 500);
   if (data.status === 'forbidden') return json({ error: 'Room chat tidak tersedia.' }, 403);
@@ -107,8 +107,10 @@ export async function POST(request) {
       return true;
     } catch (cause) {
       if (cause.statusCode === 404 || cause.statusCode === 410) {
-        await auth.supabase.from('push_subscriptions').delete()
-          .eq('endpoint', subscription.endpoint).eq('p256dh', subscription.keys.p256dh);
+        await auth.supabase.rpc('manage_push_subscription', {
+          p_server_secret: auth.config.serverSecret, p_action: 'expire',
+          p_endpoint: subscription.endpoint, p_p256dh: subscription.keys.p256dh,
+        });
       }
       return false;
     }
