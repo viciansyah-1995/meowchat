@@ -1,7 +1,7 @@
-# MeowTrack Chat - Data Model & Architecture
+# Database - Data Model & Architecture
 
 ## Overview
-MeowTrack Chat adalah aplikasi chat PWA tanpa nomor HP. Dokumen ini menjelaskan arsitektur data dan struktur aplikasi.
+Database adalah aplikasi chat PWA tanpa nomor HP. Dokumen ini menjelaskan arsitektur data dan struktur aplikasi.
 
 ---
 
@@ -122,7 +122,7 @@ MeowTrack Chat adalah aplikasi chat PWA tanpa nomor HP. Dokumen ini menjelaskan 
 
 ## File Structure (Proposed)
 ```
-MeowTrack-Chat/
+Database/
 ├── app/
 │   ├── layout.js           # Root layout
 │   ├── page.js            # Main app

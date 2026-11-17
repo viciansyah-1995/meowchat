@@ -1,4 +1,4 @@
-# MeowTrack Chat - Supabase Setup
+# Database - Supabase Setup
 
 ## Auth Strategy
 - Login: **email + password**

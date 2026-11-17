@@ -11,6 +11,8 @@ import { formatTime } from '../lib/utils/index.js';
 import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
 import PushSettings from './push-settings.js';
+import InboxRefresh from './inbox-refresh.js';
+import { readLocalPreference, writeLocalPreference } from '../lib/storage/preferences.js';
 import { disablePush } from '../lib/services/push.client.js';
 import ChatPhotoViewer from './chat-photo-viewer.js';
 import ChatMedia from './chat-media.js';
@@ -30,11 +32,14 @@ const APP_THEMES = [
   { id: 'citrus', label: 'Lemon & Pistachio' },
   { id: 'sky', label: 'Langit & Persik' },
 ];
-const CHAT_THEME_KEY = 'meowchat-chat-theme';
+const CHAT_THEME_KEY = 'database-chat-theme';
+const PREVIOUS_CHAT_THEME_KEY = 'meowchat-chat-theme';
+const INSTALL_PROMPT_KEY = 'database-install-prompt-dismissed';
+const PREVIOUS_INSTALL_PROMPT_KEY = 'database_demo_install_prompt_dismissed';
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
 const CHAT_REFRESH_INTERVAL_MS = 5000;
 
-export default function MeowTrackChat() {
+export default function DatabaseApp() {
   const [screen, setScreen] = useState('login');
   const [activeTab, setActiveTab] = useState('chats');
   const [currentUser, setCurrentUser] = useState(null);
@@ -78,14 +83,11 @@ export default function MeowTrackChat() {
   const keepBottomRef = useRef(true);
   const messageViewportHeightRef = useRef(0);
   const olderRequestRef = useRef(null);
+  const inboxRequestRef = useRef(null);
 
   useEffect(() => {
-    try {
-      const savedTheme = window.localStorage.getItem(CHAT_THEME_KEY);
-      if (APP_THEMES.some(({ id }) => id === savedTheme)) setAppTheme(savedTheme);
-    } catch {
-      // A browser that blocks storage can still change the theme for this visit.
-    }
+    const savedTheme = readLocalPreference(CHAT_THEME_KEY, PREVIOUS_CHAT_THEME_KEY);
+    if (APP_THEMES.some(({ id }) => id === savedTheme)) setAppTheme(savedTheme);
   }, []);
 
   useLayoutEffect(() => {
@@ -94,11 +96,7 @@ export default function MeowTrackChat() {
 
   const selectAppTheme = (theme) => {
     setAppTheme(theme);
-    try {
-      window.localStorage.setItem(CHAT_THEME_KEY, theme);
-    } catch {
-      // Keep the theme active for this visit.
-    }
+    writeLocalPreference(CHAT_THEME_KEY, theme, PREVIOUS_CHAT_THEME_KEY);
   };
 
   const clearFeedback = () => {
@@ -120,19 +118,30 @@ export default function MeowTrackChat() {
     }
   };
 
-  const loadInbox = useCallback(async () => {
-    setIsInboxLoading(true);
-    try {
-      const result = await InboxService.getMyInbox();
-      if (result.success) {
-        setInboxItems(result.data || []);
-      } else {
-        setDebugInfo((prev) => `${prev}\ninbox error => ${result.error?.message || JSON.stringify(result.error)}`);
+  const loadInbox = useCallback(({ showLoading = true } = {}) => {
+    if (inboxRequestRef.current) return inboxRequestRef.current;
+    if (showLoading) setIsInboxLoading(true);
+
+    async function fetchInbox() {
+      try {
+        const result = await InboxService.getMyInbox();
+        if (inboxRequestRef.current === request && result.success) setInboxItems(result.data || []);
+        return result;
+      } catch {
+        return { success: false };
+      } finally {
+        if (inboxRequestRef.current === request) {
+          inboxRequestRef.current = null;
+          setIsInboxLoading(false);
+        }
       }
-    } finally {
-      setIsInboxLoading(false);
     }
+    const request = Promise.resolve().then(fetchInbox);
+    inboxRequestRef.current = request;
+    return request;
   }, []);
+
+  const refreshInbox = useCallback(() => loadInbox({ showLoading: false }), [loadInbox]);
 
   const chatId = screen === 'chat' ? activeChat?.chat?.id : null;
   const peerId = activeChat?.otherProfile?.id;
@@ -403,7 +412,7 @@ export default function MeowTrackChat() {
       }
     }
 
-    const installDismissed = window.localStorage.getItem('database_demo_install_prompt_dismissed');
+    const installDismissed = readLocalPreference(INSTALL_PROMPT_KEY, PREVIOUS_INSTALL_PROMPT_KEY);
 
     const handleBeforeInstallPrompt = (event) => {
       event.preventDefault();
@@ -416,7 +425,7 @@ export default function MeowTrackChat() {
     const handleAppInstalled = () => {
       setInstallPromptEvent(null);
       setShowInstallPrompt(false);
-      window.localStorage.setItem('database_demo_install_prompt_dismissed', 'installed');
+      writeLocalPreference(INSTALL_PROMPT_KEY, 'installed', PREVIOUS_INSTALL_PROMPT_KEY);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -444,6 +453,8 @@ export default function MeowTrackChat() {
         setCurrentProfile(null);
         setContacts([]);
         setSearchResults([]);
+        inboxRequestRef.current = null;
+        setIsInboxLoading(false);
         setInboxItems([]);
         setActiveChat(null);
         setStarsOpen(false);
@@ -531,6 +542,8 @@ export default function MeowTrackChat() {
     setCurrentProfile(null);
     setContacts([]);
     setSearchResults([]);
+    inboxRequestRef.current = null;
+    setIsInboxLoading(false);
     setInboxItems([]);
     setActiveChat(null);
     setMessages([]);
@@ -608,7 +621,7 @@ export default function MeowTrackChat() {
 
   const dismissInstallPrompt = () => {
     setShowInstallPrompt(false);
-    window.localStorage.setItem('database_demo_install_prompt_dismissed', 'true');
+    writeLocalPreference(INSTALL_PROMPT_KEY, 'true', PREVIOUS_INSTALL_PROMPT_KEY);
   };
 
   const openDirectChat = async (profile, existingChat = null) => {
@@ -768,7 +781,7 @@ export default function MeowTrackChat() {
   const renderLogin = () => (
     <div className={`screen ${screen === 'login' ? 'active' : ''}`} id="login-screen">
       <div className="auth-container">
-        <div className="auth-logo"><h2>Database (Demo)</h2></div>
+        <div className="auth-logo"><h2>Database</h2></div>
         {renderInstallPrompt()}
         <Feedback />
         <form className="auth-form" onSubmit={handleLogin}>
@@ -790,7 +803,7 @@ export default function MeowTrackChat() {
   const renderRegister = () => (
     <div className={`screen ${screen === 'register' ? 'active' : ''}`} id="register-screen">
       <div className="auth-container">
-        <div className="auth-logo"><h2>Database (Demo)</h2></div>
+        <div className="auth-logo"><h2>Database</h2></div>
         {renderInstallPrompt()}
         <Feedback />
         <form className="auth-form" onSubmit={handleRegister}>
@@ -941,13 +954,13 @@ export default function MeowTrackChat() {
   const renderAppHome = () => (
     <div className={`screen ${screen === 'app' ? 'active' : ''}`} id="app-screen">
       <div className="mobile-app-shell">
-        <div className="header mobile-header"><h1>Database (Demo)</h1></div>
+        <div className="header mobile-header"><h1>Database</h1></div>
         <Feedback />
-        <div className="app-scroll-area">
+        <InboxRefresh active={screen === 'app' && activeTab === 'chats'} blocked={isInboxLoading} onRefresh={refreshInbox}>
           {activeTab === 'chats' && renderChatsTab()}
           {activeTab === 'contacts' && renderContactsTab()}
           {activeTab === 'profile' && renderProfileTab()}
-        </div>
+        </InboxRefresh>
         <div className="bottom-nav mobile-bottom-nav">
           {NAV_ITEMS.map((item) => (
             <button key={item.key} className={`bottom-nav-item ${activeTab === item.key ? 'active' : ''}`} onClick={() => setActiveTab(item.key)}>

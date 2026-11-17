@@ -1,4 +1,4 @@
-# MeowTrack Chat - Specification
+# Database - Specification
 
 ## Project Overview
 - **Project Name**: NoPhone Chat

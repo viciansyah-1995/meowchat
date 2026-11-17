@@ -1,7 +1,7 @@
 {
-  "name": "Database (Demo)",
+  "name": "Database",
   "short_name": "Database",
-  "description": "Database (Demo)",
+  "description": "Database",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

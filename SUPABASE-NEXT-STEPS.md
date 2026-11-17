@@ -1,4 +1,4 @@
-# Supabase Next Steps - MeowTrack Chat
+# Supabase Next Steps - Database
 
 ## Status Saat Ini
 ### Sudah dibuat

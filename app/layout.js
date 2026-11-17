@@ -17,8 +17,8 @@ export const viewport = {
 };
 
 export const metadata = {
-  title: 'Database (Demo)',
-  description: 'Database (Demo)',
+  title: 'Database',
+  description: 'Database',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
