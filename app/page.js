@@ -11,6 +11,8 @@ import { formatTime } from '../lib/utils/index.js';
 import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
 import ChatPhotoViewer from './chat-photo-viewer.js';
+import ChatMedia from './chat-media.js';
+import { MessageStarButton, useMessageStars } from './message-stars.js';
 import { FileMessage } from './file-message.js';
 import { VoiceMessage } from './voice-note.js';
 
@@ -56,6 +58,8 @@ export default function MeowTrackChat() {
   const [messageInput, setMessageInput] = useState('');
   const [appTheme, setAppTheme] = useState('system');
   const [wallpaperUrl, setWallpaperUrl] = useState(null);
+  const [mediaChatId, setMediaChatId] = useState(null);
+  const [starsOpen, setStarsOpen] = useState(false);
   const [viewedPhoto, setViewedPhoto] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
@@ -131,6 +135,7 @@ export default function MeowTrackChat() {
   const chatId = screen === 'chat' ? activeChat?.chat?.id : null;
   const peerId = activeChat?.otherProfile?.id;
   const userId = currentUser?.id;
+  const stars = useMessageStars(userId);
 
   const chatOpen = Boolean(chatId);
   useEffect(() => {
@@ -439,6 +444,8 @@ export default function MeowTrackChat() {
         setSearchResults([]);
         setInboxItems([]);
         setActiveChat(null);
+        setStarsOpen(false);
+        setViewedPhoto(null);
         setMessages([]);
         setScreen('login');
       }
@@ -601,19 +608,21 @@ export default function MeowTrackChat() {
     window.localStorage.setItem('database_demo_install_prompt_dismissed', 'true');
   };
 
-  const openDirectChat = async (profile) => {
+  const openDirectChat = async (profile, existingChat = null) => {
     clearFeedback();
     setIsChatOpening(true);
     setDebugInfo('openDirectChat() start');
 
-    if (!profile || !profile.id) {
+    if (!existingChat && !profile?.id) {
       setErrorMessage('Profile tujuan tidak valid atau belum bisa dibaca dari data saat ini');
       setDebugInfo((prev) => `${prev}\ninvalid profile payload => ${JSON.stringify(profile)}`);
       setIsChatOpening(false);
       return;
     }
 
-    const chatResult = await SupabaseChatService.getOrCreateDirectChat(profile.id);
+    const chatResult = existingChat
+      ? { success: true, data: existingChat }
+      : await SupabaseChatService.getOrCreateDirectChat(profile.id);
     if (!chatResult.success) {
       setErrorMessage(chatResult.error?.message || 'Gagal membuka direct chat');
       if (chatResult.debug && IS_DEBUG_MODE) setDebugInfo(chatResult.debug.join('\n'));
@@ -794,35 +803,45 @@ export default function MeowTrackChat() {
   );
 
   const renderChatsTab = () => (
-    <>
-      <div className="contacts-header">
-        <h3 style={{ marginBottom: 12 }}>Chats</h3>
-        {isInboxLoading ? (
-          <div className="skeleton-list">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div>
-        ) : inboxItems.length === 0 ? (
-          <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada percakapan</p></div>
-        ) : (
-          <div className="contacts-list">
-            {inboxItems.map((item) => {
-              const targetProfile = item.otherProfile || item.fallbackProfile || null;
-              return (
-                <div key={item.chat.id} className="contact-item" onClick={() => openDirectChat(targetProfile)}>
-                  <div className="contact-avatar">{(targetProfile?.display_name || targetProfile?.username || '?').slice(0, 1).toUpperCase()}</div>
-                  <div className="contact-info">
-                    <div className="contact-name">{targetProfile?.display_name || 'Unknown'}</div>
-                    <div className="contact-preview">{item.lastMessage?.file_name || (item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan')}</div>
-                  </div>
-                  <div className="contact-time">
+    <div className="contacts-header">
+      <div className="inbox-heading">
+        <h3>Chats</h3>
+        <button type="button" className="chat-star-button" aria-label="Buka Pesan Berbintang"
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            setStarsOpen(true);
+          }}><span aria-hidden="true">★</span></button>
+      </div>
+      {isInboxLoading ? (
+        <div className="skeleton-list" role="status" aria-label="Memuat daftar chat">
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-item" />)}
+        </div>
+      ) : inboxItems.length === 0 ? (
+        <p className="empty-state">Belum ada percakapan.</p>
+      ) : (
+        <ul className="contacts-list inbox-list">
+          {inboxItems.map((item) => {
+            const targetProfile = item.otherProfile || item.fallbackProfile;
+            const title = targetProfile?.display_name || targetProfile?.username || 'Chat';
+            return (
+              <li key={item.chat.id}>
+                <button type="button" className="contact-item inbox-open" onClick={() => openDirectChat(targetProfile, item.chat)}>
+                  <span className="contact-avatar" aria-hidden="true">{title.slice(0, 1).toUpperCase()}</span>
+                  <span className="contact-info">
+                    <span className="contact-name">{title}</span>
+                    <span className="contact-preview">{item.lastMessage?.file_name || (item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan')}</span>
+                  </span>
+                  <span className="contact-time">
                     {item.lastMessage?.created_at ? formatTime(new Date(item.lastMessage.created_at).getTime()) : ''}
                     {item.unreadCount > 0 && <span className="unread-badge">{item.unreadCount}</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 
   const renderContactsTab = () => (
@@ -941,6 +960,7 @@ export default function MeowTrackChat() {
     setScreen('app');
     setActiveTab('chats');
     setActiveChat(null);
+    setMediaChatId(null);
     setMessageReadMap({});
     setReplyingTo(null);
     clearFeedback();
@@ -959,10 +979,29 @@ export default function MeowTrackChat() {
           </button>
           <div className="chat-contact-info">
             <h3>{activeChatTitle}</h3>
-            <p>@{activeChat?.otherProfile?.username}</p>
+            {activeChat?.otherProfile?.username && <p>@{activeChat.otherProfile.username}</p>}
           </div>
+          {chatId && (
+            <div className="chat-header-actions">
+              <button type="button" className="chat-star-button" aria-label="Buka Pesan Berbintang room ini"
+                onClick={(event) => {
+                  event.currentTarget.focus({ preventScroll: true });
+                  setStarsOpen(true);
+                }}><span aria-hidden="true">★</span></button>
+              <button type="button" className="chat-back chat-media-open" onClick={(event) => {
+                event.currentTarget.focus({ preventScroll: true });
+                setMediaChatId(chatId);
+              }}>Media</button>
+            </div>
+          )}
         </header>
         {errorMessage && <div className="error-message" role="alert">{errorMessage}</div>}
+        {stars.error && (
+          <div className="error-message">
+            <p role="alert">{stars.error}</p>
+            {!stars.ready && <button type="button" className="btn btn-secondary" onClick={stars.retry}>Coba lagi</button>}
+          </div>
+        )}
         <div className="chat-history">
           {chatOpen && wallpaperUrl && <div className="chat-wallpaper" aria-hidden="true" style={{ backgroundImage: `url(${wallpaperUrl})` }} />}
         {isChatOpening ? (
@@ -1020,6 +1059,9 @@ export default function MeowTrackChat() {
                   )}
                   {msg.content && <p className="message-content">{msg.content}</p>}
                   <div className="message-meta">
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <MessageStarButton messageId={msg.id} stars={stars} />
+                    </span>
                     <time dateTime={msg.created_at}>{formatTime(new Date(msg.created_at).getTime())}</time>
                     {isOwn && (
                       <span className={`message-receipt ${readByOther ? 'message-receipt-read' : 'message-receipt-sent'}`}>
@@ -1074,7 +1116,16 @@ export default function MeowTrackChat() {
       {renderRegister()}
       {renderAppHome()}
       {renderChat()}
-      {chatId && viewedPhoto?.chatId === chatId && (
+      {chatId && mediaChatId === chatId && (
+        <ChatMedia key={chatId} chatId={chatId} title={activeChatTitle}
+          onClose={() => setMediaChatId(null)} onViewPhoto={(src) => setViewedPhoto({ chatId, src })} />
+      )}
+      {userId && starsOpen && (
+        <ChatMedia key={chatId || 'all-stars'} chatId={chatId} title={chatId ? activeChatTitle : 'Semua percakapan'}
+          stars={stars} userId={userId} onClose={() => setStarsOpen(false)}
+          onViewPhoto={(src) => setViewedPhoto({ chatId, src })} />
+      )}
+      {viewedPhoto && viewedPhoto.chatId === chatId && (
         <ChatPhotoViewer src={viewedPhoto.src} onClose={() => setViewedPhoto(null)} />
       )}
     </div>
