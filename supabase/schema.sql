@@ -1,5 +1,5 @@
 -- =====================================================
--- MeowTrack Chat - Supabase Schema
+-- Database - Supabase Schema
 -- Auth: email + password
 -- Public identity: username + display_name
 -- =====================================================

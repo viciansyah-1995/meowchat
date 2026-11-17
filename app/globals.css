@@ -93,9 +93,9 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .auth-logo h2 { font-size: 28px; color: var(--accent-text); margin-bottom: 0; font-weight: 700; }
 .contacts-header h3 { color: var(--text-primary); letter-spacing: -0.01em; }
 .contacts-header h3 { font-size: 20px; font-weight: 700; }
-.mobile-app-shell { min-height: 100vh; display: flex; flex-direction: column; background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 70%, #ffffff 30%) 0%, var(--bg-primary) 52%, var(--bg-chat) 100%); }
+.mobile-app-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 70%, #ffffff 30%) 0%, var(--bg-primary) 52%, var(--bg-chat) 100%); overflow: hidden; }
 .mobile-header { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; box-shadow: 0 14px 28px rgba(41, 54, 129, 0.12); }
-.app-scroll-area { flex: 1; overflow-y: auto; padding-bottom: 112px; }
+.app-scroll-area { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 112px; }
 .header-back { background: none; border: none; color: white; cursor: pointer; font-size: 24px; padding: 4px; }
 .screen { display: none; min-height: 100vh; }
 .screen.active { display: block; }
@@ -531,3 +531,14 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .push-settings p { margin: 4px 0 8px; color: var(--text-secondary); font-size: 13px; }
 .push-settings p[role="alert"] { color: var(--danger); }
 .push-settings .btn { min-height: 44px; padding: 6px 10px; font-size: 13px; }
+
+.inbox-scroll-area { overscroll-behavior-y: contain; }
+:root:has(#app-screen.active .inbox-scroll-area) { overscroll-behavior-y: none; }
+.inbox-refresh-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 4px 16px; color: var(--text-secondary); font-size: 13px; }
+.inbox-refresh-tools .btn { flex: none; min-height: 40px; padding: 6px 10px; font-size: 13px; }
+.inbox-pull-indicator { display: grid; place-items: end center; overflow: hidden; color: var(--text-secondary); font-size: 13px; }
+
+.push-status-list { display: grid; gap: 4px; margin: 8px 0; font-size: 13px; }
+.push-status-list div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; }
+.push-status-list dd { font-weight: 600; }
+.push-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }

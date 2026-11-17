@@ -1,4 +1,4 @@
-# MeowTrack Chat - Development Guide
+# Database - Development Guide
 
 ## Development Stages
 
@@ -38,7 +38,7 @@
 ### Setup
 ```bash
 # Clone / Create project
-cd MeowTrack-Chat
+cd Database
 
 # Install dependencies
 npm install
@@ -176,7 +176,7 @@ migrations/
 4. Deploy to staging
 
 ### URLs
-- Staging: https://meowtrack-chat-staging.vercel.app
+- Staging: the Vercel preview URL for the pull request
 - Database: Supabase Staging
 
 ### Pre-deployment Checklist
@@ -190,7 +190,7 @@ migrations/
 ## Stage 5: Production Deployment
 
 ### Final URLs
-- Production: https://meowtrack-chat.vercel.app
+- Production: https://lisn-topaz.vercel.app
 - Database: Supabase Production
 
 ### Deployment Steps
@@ -221,7 +221,7 @@ git push origin v1.0.0
 
 class DataMigration {
   static async migrateUsers() {
-    const users = JSON.parse(localStorage.getItem('meowtrackchat_users'));
+    const users = JSON.parse(localStorage.getItem('database_users'));
     for (const user of users) {
       await supabase.from('users').insert({
         id: user.id,
@@ -233,7 +233,7 @@ class DataMigration {
   }
   
   static async migrateMessages() {
-    const messages = JSON.parse(localStorage.getItem('meowtrackchat_messages'));
+    const messages = JSON.parse(localStorage.getItem('database_messages'));
     for (const msg of messages) {
       await supabase.from('messages').insert({
         id: msg.id,
@@ -268,8 +268,8 @@ await DataMigration.migrateChats();
 | Dev Local | localhost:3003 | localStorage | localStorage | localStorage |
 | Dev + Mock | localhost:3003 | In-Memory | Mock | In-Memory |
 | Dev + Backend | localhost:3003 | Supabase Dev | Supabase | Supabase |
-| Staging | meowtrack-chat-staging.vercel.app | Supabase Staging | Supabase | Supabase |
-| Production | meowtrack-chat.vercel.app | Supabase Prod | Supabase | Supabase |
+| Staging | <preview-project>.vercel.app | Supabase Staging | Supabase | Supabase |
+| Production | lisn-topaz.vercel.app | Supabase Prod | Supabase | Supabase |
 
 ---
 
@@ -287,7 +287,7 @@ npm start
 git init
 git add .
 git commit -m "Initial commit"
-git remote add origin https://github.com/username/meowtrack-chat.git
+git remote add origin https://github.com/username/database.git
 git push -u origin main
 
 # Deploy to Vercel
