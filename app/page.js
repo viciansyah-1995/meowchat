@@ -546,8 +546,9 @@ export default function MeowTrackChat() {
 
   const handleSearchUser = async (event) => {
     event.preventDefault();
-    const query = searchQuery.trim().replace(/^@/, '');
-    if (!query || isSearchingUsers) return;
+    const input = searchQuery.trim();
+    if (!input || isSearchingUsers) return;
+    const query = input.replace(/^@/, '');
     clearFeedback();
     setSearchResults([]);
     if (!/^[A-Za-z0-9_]{1,20}$/.test(query)) {
