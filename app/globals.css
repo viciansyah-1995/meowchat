@@ -523,3 +523,11 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .starred-message-list { grid-template-columns: 1fr; }
 .starred-message-list .chat-media-photo { max-width: 220px; }
 .collection-message-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+
+.composer-ping-option { grid-column: 1 / -1; }
+.composer-options .composer-ping-option { color: var(--accent-text); background: var(--surface-accent-soft); }
+.composer-ping-status { padding: 0 4px 5px; color: var(--text-secondary); font-size: 12px; }
+.push-settings { margin-bottom: 24px; padding: 12px; border: 1px solid var(--divider); border-radius: 12px; background: var(--bg-secondary); }
+.push-settings p { margin: 4px 0 8px; color: var(--text-secondary); font-size: 13px; }
+.push-settings p[role="alert"] { color: var(--danger); }
+.push-settings .btn { min-height: 44px; padding: 6px 10px; font-size: 13px; }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { callPush } from '../lib/services/push.client.js';
 import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import { VoiceComposer } from './voice-note.js';
 
@@ -41,6 +42,9 @@ function ComposerTextarea({ inputRef, value, onChange, replying }) {
 
 export default function ChatComposer({ chatId, replyTo, value, onChange, onSendText, sendingText, onSent, onError, children }) {
   const [showOptions, setShowOptions] = useState(false);
+  const [pingStatus, setPingStatus] = useState('');
+  const [sendingPing, setSendingPing] = useState(false);
+  const pingRef = useRef(false);
   const [attachment, setAttachment] = useState(null);
   const [sendingAttachment, setSendingAttachment] = useState(false);
   const inputRef = useRef(null);
@@ -66,6 +70,37 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
   useEffect(() => {
     if (showOptions) firstOptionRef.current?.focus();
   }, [showOptions]);
+
+  useEffect(() => {
+    if (!pingStatus || sendingPing) return;
+    const timer = window.setTimeout(() => setPingStatus(''), 6000);
+    return () => window.clearTimeout(timer);
+  }, [pingStatus, sendingPing]);
+
+  async function sendPing() {
+    if (pingRef.current) return;
+    pingRef.current = true;
+    setShowOptions(false);
+    setSendingPing(true);
+    setPingStatus('Mengirim PING…');
+    onError('');
+    try {
+      const result = await callPush('POST', { chatId });
+      if (!alive.current) return;
+      setPingStatus(result.pushed
+        ? 'PING terkirim.'
+        : result.targetCount ? 'PING masuk ke chat. Push tidak berhasil dikirim.'
+          : 'PING masuk ke chat. Lawan chat belum mengaktifkan notifikasi.');
+    } catch (cause) {
+      if (alive.current) {
+        setPingStatus('');
+        onError(cause.message || 'Gagal mengirim PING.');
+      }
+    } finally {
+      pingRef.current = false;
+      if (alive.current) setSendingPing(false);
+    }
+  }
 
   function openPicker(input) {
     setShowOptions(false);
@@ -123,6 +158,7 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
     <div className="chat-input-area-wrapper">
       {children}
       <div className="chat-input-area">
+        {pingStatus && <p className="composer-ping-status" role="status">{pingStatus}</p>}
         <div className={showOptions ? 'composer-card composer-card-options' : 'composer-card'} onKeyDown={(event) => {
           if (event.key !== 'Escape' || !showOptions) return;
           setShowOptions(false);
@@ -135,11 +171,12 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
             {({ record, panel }) => panel || (
               <>
                 {showOptions ? (
-                  <div className="composer-options" id={optionsId} role="group" aria-label="Jenis lampiran">
+                  <div className="composer-options" id={optionsId} role="group" aria-label="Opsi chat">
                     <button ref={firstOptionRef} type="button" onClick={() => openPicker(galleryRef)}>Galeri</button>
                     <button type="button" onClick={() => openPicker(cameraRef)}>Kamera</button>
                     <button type="button" onClick={() => openPicker(fileRef)}>File</button>
                     <button type="button" onClick={() => { setShowOptions(false); record(); }}>Voice note</button>
+                    <button type="button" className="composer-ping-option" onClick={sendPing} disabled={sendingPing}>PING!</button>
                   </div>
                 ) : attachment ? (
                   <div className="composer-attachment">

@@ -1,38 +1,32 @@
-const CACHE_NAME = 'meowtrack-chat-v2';
-const urlsToCache = ['/','/manifest.json'];
-
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
-  );
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => Promise.all(
-      cacheNames.map((cacheName) => cacheName !== CACHE_NAME ? caches.delete(cacheName) : Promise.resolve())
-    )).then(() => self.clients.claim())
-  );
+  event.waitUntil(caches.delete('meowtrack-chat-v2').then(() => self.clients.claim()));
 });
 
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
-  if (
-    url.pathname.startsWith('/_next/') ||
-    url.pathname.endsWith('.js') ||
-    url.pathname.endsWith('.css') ||
-    url.pathname.endsWith('.map')
-  ) {
+self.addEventListener('push', (event) => {
+  let payload;
+  try {
+    payload = event.data?.json();
+  } catch {
     return;
   }
+  if (payload?.type !== 'chat-ping') return;
 
-  if (event.request.method !== 'GET') {
-    return;
-  }
+  event.waitUntil(self.registration.showNotification('Database', {
+    body: 'Your deployment is Success!',
+    icon: '/app-icon.jpg',
+  }));
+});
 
-  event.respondWith(
-    caches.match(event.request).then((response) => response || fetch(event.request))
-  );
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const app = windows.find((client) => new URL(client.url).origin === self.location.origin);
+    if (app) await app.focus();
+    else await self.clients.openWindow('/');
+  })());
 });

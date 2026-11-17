@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
-    "next": "15.5.19"
+    "next": "15.5.19",
+    "web-push": "4.0.0"
   }
 }

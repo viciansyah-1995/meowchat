@@ -10,6 +10,8 @@ import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
+import PushSettings from './push-settings.js';
+import { disablePush } from '../lib/services/push.client.js';
 import ChatPhotoViewer from './chat-photo-viewer.js';
 import ChatMedia from './chat-media.js';
 import { MessageStarButton, useMessageStars } from './message-stars.js';
@@ -518,6 +520,7 @@ export default function MeowTrackChat() {
 
   const handleLogout = async () => {
     clearFeedback();
+    await disablePush().catch(() => {});
     const result = await SupabaseAuthService.signOut();
     if (!result.success) {
       setErrorMessage(result.error?.message || 'Logout gagal');
@@ -923,6 +926,7 @@ export default function MeowTrackChat() {
           </label>
         ))}
       </fieldset>
+      {userId && <PushSettings key={userId} userId={userId} />}
       <h3 style={{ marginBottom: 16 }}>Profile</h3>
       <form className="auth-form" onSubmit={handleProfileSave}>
         <div className="input-group"><label>Username</label><input type="text" value={profileForm.username} onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })} /></div>
