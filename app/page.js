@@ -8,7 +8,7 @@ import SupabaseContactService from '../lib/services/contact.service.supabase.js'
 import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
-import { getSupabaseEnvStatus } from '../lib/supabase/client.js';
+import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
 import ChatPhotoViewer from './chat-photo-viewer.js';
 import { FileMessage } from './file-message.js';
@@ -19,10 +19,12 @@ const NAV_ITEMS = [
   { key: 'contacts', label: 'Contact', icon: '👥' },
   { key: 'profile', label: 'Pengaturan', icon: '⚙️' },
 ];
-const CHAT_THEMES = [
+const APP_THEMES = [
   { id: 'system', label: 'Bawaan sistem' },
   { id: 'ocean', label: 'Laut & Mint' },
   { id: 'sunset', label: 'Senja & Lavender' },
+  { id: 'citrus', label: 'Lemon & Pistachio' },
+  { id: 'sky', label: 'Langit & Persik' },
 ];
 const CHAT_THEME_KEY = 'meowchat-chat-theme';
 const IS_DEBUG_MODE = process.env.NODE_ENV !== 'production';
@@ -52,12 +54,13 @@ export default function MeowTrackChat() {
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [messageInput, setMessageInput] = useState('');
-  const [chatTheme, setChatTheme] = useState('system');
+  const [appTheme, setAppTheme] = useState('system');
+  const [wallpaperUrl, setWallpaperUrl] = useState(null);
   const [viewedPhoto, setViewedPhoto] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
-  const [isTabLoading, setIsTabLoading] = useState(false);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [isInboxLoading, setIsInboxLoading] = useState(false);
   const [isChatOpening, setIsChatOpening] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
@@ -73,14 +76,18 @@ export default function MeowTrackChat() {
   useEffect(() => {
     try {
       const savedTheme = window.localStorage.getItem(CHAT_THEME_KEY);
-      if (CHAT_THEMES.some(({ id }) => id === savedTheme)) setChatTheme(savedTheme);
+      if (APP_THEMES.some(({ id }) => id === savedTheme)) setAppTheme(savedTheme);
     } catch {
       // A browser that blocks storage can still change the theme for this visit.
     }
   }, []);
 
-  const selectChatTheme = (theme) => {
-    setChatTheme(theme);
+  useLayoutEffect(() => {
+    document.documentElement.dataset.appTheme = appTheme;
+  }, [appTheme]);
+
+  const selectAppTheme = (theme) => {
+    setAppTheme(theme);
     try {
       window.localStorage.setItem(CHAT_THEME_KEY, theme);
     } catch {
@@ -124,6 +131,31 @@ export default function MeowTrackChat() {
   const chatId = screen === 'chat' ? activeChat?.chat?.id : null;
   const peerId = activeChat?.otherProfile?.id;
   const userId = currentUser?.id;
+
+  const chatOpen = Boolean(chatId);
+  useEffect(() => {
+    if (!chatOpen || !userId) return;
+
+    const controller = new AbortController();
+    let url;
+    async function loadWallpaper() {
+      try {
+        const { data, error } = await getSupabaseClient().storage
+          .from('chat-wallpaper').download('chat-wallpaper.webp', {}, { signal: controller.signal });
+        if (controller.signal.aborted || error || !data?.size) return;
+        url = URL.createObjectURL(data);
+        setWallpaperUrl(url);
+      } catch {
+        // The theme background remains visible if the wallpaper is unavailable.
+      }
+    }
+    loadWallpaper();
+    return () => {
+      controller.abort();
+      if (url) URL.revokeObjectURL(url);
+      setWallpaperUrl(null);
+    };
+  }, [chatOpen, userId]);
 
   const syncReadStatus = useCallback(async (page, readerId, isCurrent, markedIds) => {
     const receipts = await InboxService.getReadStatusMap(
@@ -512,26 +544,29 @@ export default function MeowTrackChat() {
     await loadInbox();
   };
 
-  const handleSearchUser = async () => {
+  const handleSearchUser = async (event) => {
+    event.preventDefault();
+    const input = searchQuery.trim();
+    if (!input || isSearchingUsers) return;
+    const query = input.replace(/^@/, '');
     clearFeedback();
-    setIsTabLoading(true);
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
+    setSearchResults([]);
+    if (!/^[A-Za-z0-9_]{1,20}$/.test(query)) {
+      setErrorMessage('Gunakan huruf, angka, atau garis bawah untuk mencari username.');
       return;
     }
+    setIsSearchingUsers(true);
 
     try {
-      const result = await ProfileService.searchProfiles(searchQuery.trim());
-      if (!result.success) {
-        setErrorMessage(result.error?.message || 'Gagal mencari user');
-        return;
-      }
-
+      const result = await ProfileService.searchProfiles(query);
+      if (!result.success) throw result.error;
       const filtered = (result.data || []).filter((profile) => profile.id !== currentProfile?.id);
       setSearchResults(filtered);
       setDebugInfo(`search results => ${filtered.length}`);
+    } catch {
+      setErrorMessage('Gagal mencari user. Coba lagi.');
     } finally {
-      setIsTabLoading(false);
+      setIsSearchingUsers(false);
     }
   };
 
@@ -793,12 +828,25 @@ export default function MeowTrackChat() {
   const renderContactsTab = () => (
     <>
       <div className="contacts-header">
-        <div className="search-box"><span>🔍</span><input type="text" placeholder="Cari username..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
+        <form className="contact-search" role="search" onSubmit={handleSearchUser} aria-busy={isSearchingUsers}>
+          <div className="search-box">
+            <input type="search" aria-label="Cari username" placeholder="Cari username..." value={searchQuery}
+              autoCapitalize="none" autoComplete="off" spellCheck={false} enterKeyHint="search"
+              disabled={isSearchingUsers} onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setSearchResults([]);
+                clearFeedback();
+              }} />
+          </div>
+          <button type="submit" className="btn btn-primary contact-search-button"
+            disabled={!searchQuery.trim() || isSearchingUsers}>
+            {isSearchingUsers ? 'Mencari…' : 'Cari User'}
+          </button>
+        </form>
       </div>
-      <div style={{ padding: '0 16px 16px' }}><button className="btn btn-primary" style={{ width: '100%' }} onClick={handleSearchUser}>Cari User</button></div>
       <div className="contacts-header" style={{ paddingTop: 0 }}>
         <h3 style={{ marginBottom: 12 }}>Hasil Pencarian</h3>
-        {isTabLoading ? <div className="skeleton-list">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div> : searchResults.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada hasil pencarian</p></div> : (
+        {isSearchingUsers ? <div className="skeleton-list">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div> : searchResults.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada hasil pencarian</p></div> : (
           <div className="contacts-list">
             {searchResults.map((profile) => (
               <div key={profile.id} className="contact-item" style={{ cursor: 'default' }}>
@@ -818,7 +866,7 @@ export default function MeowTrackChat() {
       </div>
       <div className="contacts-header" style={{ paddingTop: 0 }}>
         <h3 style={{ marginBottom: 12 }}>Kontak Saya</h3>
-        {isTabLoading ? <div className="skeleton-list">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton-item" />)}</div> : contacts.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada kontak</p></div> : (
+        {contacts.length === 0 ? <div className="empty-state" style={{ padding: '16px 0' }}><p>Belum ada kontak</p></div> : (
           <div className="contacts-list">
             {contacts.map((contact) => {
               const profile = contact.contact_profile;
@@ -843,12 +891,12 @@ export default function MeowTrackChat() {
     <div className="contacts-header">
       <h3 style={{ marginBottom: 16 }}>Pengaturan</h3>
       <fieldset className="chat-theme-picker">
-        <legend>Tema chat</legend>
-        {CHAT_THEMES.map(({ id, label }) => (
-          <label key={id} className="chat-theme-option" data-chat-theme={id}>
-            <input type="radio" name="chat-theme" checked={chatTheme === id} onChange={() => selectChatTheme(id)} />
+        <legend>Tema aplikasi</legend>
+        {APP_THEMES.map(({ id, label }) => (
+          <label key={id} className="chat-theme-option">
+            <input type="radio" name="chat-theme" checked={appTheme === id} onChange={() => selectAppTheme(id)} />
             <span>{label}</span>
-            <span className="chat-theme-swatches" aria-hidden="true">
+            <span className="chat-theme-swatches" data-app-theme={id} aria-hidden="true">
               <span />
               <span />
               <span />
@@ -900,7 +948,7 @@ export default function MeowTrackChat() {
   };
 
   const renderChat = () => (
-    <div ref={chatScreenRef} className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen" data-chat-theme={chatTheme}>
+    <div ref={chatScreenRef} className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen">
       <div className="chat-container">
         <header className="chat-header">
           <button type="button" className="chat-back" onClick={handleBackToChats}>
@@ -915,6 +963,8 @@ export default function MeowTrackChat() {
           </div>
         </header>
         {errorMessage && <div className="error-message" role="alert">{errorMessage}</div>}
+        <div className="chat-history">
+          {chatOpen && wallpaperUrl && <div className="chat-wallpaper" aria-hidden="true" style={{ backgroundImage: `url(${wallpaperUrl})` }} />}
         {isChatOpening ? (
           <div className="chat-loading-shell">
             <div className="chat-loading-header">
@@ -987,6 +1037,7 @@ export default function MeowTrackChat() {
           )}
         </div>
         )}
+        </div>
         {!isChatOpening && chatId && (
           <ChatComposer
             key={chatId}
