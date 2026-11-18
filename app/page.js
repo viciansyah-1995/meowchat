@@ -70,9 +70,12 @@ export default function DatabaseApp() {
   const [viewedPhoto, setViewedPhoto] = useState(null);
   const [envDiagnostic, setEnvDiagnostic] = useState(null);
   const [isBootLoading, setIsBootLoading] = useState(true);
+  const [sessionError, setSessionError] = useState('');
+  const [sessionAttempt, setSessionAttempt] = useState(0);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [isInboxLoading, setIsInboxLoading] = useState(false);
+  const [inboxError, setInboxError] = useState(false);
   const [isChatOpening, setIsChatOpening] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
@@ -84,6 +87,8 @@ export default function DatabaseApp() {
   const messageViewportHeightRef = useRef(0);
   const olderRequestRef = useRef(null);
   const inboxRequestRef = useRef(null);
+  const sessionUserRef = useRef(null);
+  const profileRequestRef = useRef(null);
 
   useEffect(() => {
     const savedTheme = readLocalPreference(CHAT_THEME_KEY, PREVIOUS_CHAT_THEME_KEY);
@@ -109,14 +114,16 @@ export default function DatabaseApp() {
     return activeChat.otherProfile?.display_name || activeChat.otherProfile?.username || 'Chat';
   }, [activeChat]);
 
-  const loadContacts = async () => {
+  const loadContacts = useCallback(async () => {
+    const sessionUser = sessionUserRef.current;
     const result = await SupabaseContactService.getContacts();
+    if (sessionUserRef.current !== sessionUser) return;
     if (result.success) {
       setContacts(result.data || []);
     } else {
       setDebugInfo((prev) => `${prev}\ncontacts error => ${result.error?.message || JSON.stringify(result.error)}`);
     }
-  };
+  }, []);
 
   const loadInbox = useCallback(({ showLoading = true } = {}) => {
     if (inboxRequestRef.current) return inboxRequestRef.current;
@@ -125,9 +132,13 @@ export default function DatabaseApp() {
     async function fetchInbox() {
       try {
         const result = await InboxService.getMyInbox();
-        if (inboxRequestRef.current === request && result.success) setInboxItems(result.data || []);
+        if (inboxRequestRef.current === request) {
+          setInboxError(!result.success);
+          if (result.success) setInboxItems(result.data || []);
+        }
         return result;
       } catch {
+        if (inboxRequestRef.current === request) setInboxError(true);
         return { success: false };
       } finally {
         if (inboxRequestRef.current === request) {
@@ -319,78 +330,121 @@ export default function DatabaseApp() {
     };
   }, [chatId, peerId, userId, loadInbox, syncReadStatus]);
 
-  const hydrateAppShell = async (profile) => {
-    setCurrentProfile(profile);
-    setProfileForm({
-      username: profile.username || '',
-      displayName: profile.display_name || '',
-      bio: profile.bio || '',
-    });
-    setScreen('app');
-    setActiveTab('chats');
-    if (IS_DEBUG_MODE) {
-      setDebugInfo((prev) => `${prev}\nprofile => ${JSON.stringify(profile)}`);
+  const resetSignedInState = useCallback(() => {
+    sessionUserRef.current = null;
+    profileRequestRef.current?.abort();
+    profileRequestRef.current = null;
+    inboxRequestRef.current = null;
+    setIsInboxLoading(false);
+    setInboxError(false);
+    setCurrentUser(null);
+    setCurrentProfile(null);
+    setContacts([]);
+    setSearchResults([]);
+    setInboxItems([]);
+    setActiveChat(null);
+    setStarsOpen(false);
+    setMediaChatId(null);
+    setViewedPhoto(null);
+    setMessages([]);
+    setReplyingTo(null);
+    setMessageInput('');
+    setScreen('login');
+  }, []);
+
+  useEffect(() => {
+    let timer;
+    let sawSessionEvent = false;
+    let active = true;
+    const watchdog = window.setTimeout(() => {
+      setIsBootLoading(false);
+      setSessionError('Sesi belum bisa dipulihkan. Periksa koneksi, lalu coba lagi.');
+    }, 10000);
+
+    async function applySession(session) {
+      if (!session?.user) {
+        resetSignedInState();
+        setSessionError('');
+        setIsBootLoading(false);
+        return;
+      }
+
+      const user = session.user;
+      if (sessionUserRef.current === user.id || profileRequestRef.current?.userId === user.id) return;
+      if (sessionUserRef.current && sessionUserRef.current !== user.id) resetSignedInState();
+      profileRequestRef.current?.abort();
+
+      const controller = new AbortController();
+      const request = { userId: user.id, abort: () => controller.abort() };
+      profileRequestRef.current = request;
+      setIsBootLoading(true);
+      setSessionError('');
+      let deadline;
+      try {
+        const timeout = new Promise((_, reject) => {
+          deadline = window.setTimeout(() => {
+            controller.abort();
+            reject(new Error('Profile request timed out.'));
+          }, 8000);
+        });
+        const result = await Promise.race([ProfileService.getMyProfile(user.id, controller.signal), timeout]);
+        if (!active || profileRequestRef.current !== request) return;
+        if (!result.success) throw result.error;
+        sessionUserRef.current = user.id;
+        setCurrentUser(user);
+        setCurrentProfile(result.data);
+        setProfileForm({
+          username: result.data.username || '',
+          displayName: result.data.display_name || '',
+          bio: result.data.bio || '',
+        });
+        setScreen('app');
+        setActiveTab('chats');
+        loadContacts().catch(() => {});
+        loadInbox();
+      } catch {
+        if (active && profileRequestRef.current === request) {
+          setSessionError('Profil belum bisa dimuat. Periksa koneksi, lalu coba lagi.');
+        }
+      } finally {
+        window.clearTimeout(deadline);
+        if (active && profileRequestRef.current === request) {
+          profileRequestRef.current = null;
+          setIsBootLoading(false);
+        }
+      }
     }
 
-    setTimeout(() => {
-      loadContacts().catch((error) => {
-        if (IS_DEBUG_MODE) {
-          setDebugInfo((prev) => `${prev}\nloadContacts async error => ${error.message || JSON.stringify(error)}`);
-        }
-      });
-
-      loadInbox().catch((error) => {
-        if (IS_DEBUG_MODE) {
-          setDebugInfo((prev) => `${prev}\nloadInbox async error => ${error.message || JSON.stringify(error)}`);
-        }
-      });
-    }, 0);
-  };
-
-  const loadSessionAndProfile = async () => {
+    let subscription;
     try {
-      setIsBootLoading(true);
-      const sessionResult = await SupabaseAuthService.getSession();
-      if (!sessionResult.success) {
-        setErrorMessage(sessionResult.error?.message || 'Gagal mengambil session');
-        return;
-      }
-
-      const session = sessionResult.data?.session;
-      if (!session?.user) {
-        setCurrentUser(null);
-        setCurrentProfile(null);
-        setScreen('login');
-        return;
-      }
-
-      setCurrentUser(session.user);
-      if (IS_DEBUG_MODE) {
-        setDebugInfo(`session user => ${session.user.email}`);
-      }
-
-      let profileResult = await ProfileService.getMyProfile();
-      if (!profileResult.success) {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        profileResult = await ProfileService.getMyProfile();
-      }
-
-      if (profileResult.success) {
-        await hydrateAppShell(profileResult.data);
-      } else {
-        setErrorMessage(profileResult.error?.message || 'Gagal mengambil profile');
-        if (IS_DEBUG_MODE) {
-          setDebugInfo((prev) => `${prev}\nprofile error => ${JSON.stringify(profileResult.error)}`);
-        }
-      }
-    } catch (error) {
-      setErrorMessage(`Init exception: ${error.message}`);
-      if (IS_DEBUG_MODE) {
-        setDebugInfo(`init exception => ${error.stack || error.message}`);
-      }
-    } finally {
+      ({ data: { subscription } } = SupabaseAuthService.onAuthStateChange((event, session) => {
+        if (event === 'INITIAL_SESSION' && sawSessionEvent) return;
+        sawSessionEvent = true;
+        window.clearTimeout(watchdog);
+        window.clearTimeout(timer);
+        // Supabase can hold the auth lock until this callback returns.
+        timer = window.setTimeout(() => applySession(session), 0);
+      }));
+    } catch {
+      window.clearTimeout(watchdog);
+      setSessionError('Sesi belum bisa diperiksa. Coba lagi.');
       setIsBootLoading(false);
     }
+
+    return () => {
+      active = false;
+      window.clearTimeout(watchdog);
+      window.clearTimeout(timer);
+      profileRequestRef.current?.abort();
+      profileRequestRef.current = null;
+      subscription?.unsubscribe();
+    };
+  }, [sessionAttempt, resetSignedInState, loadContacts, loadInbox]);
+
+  const retrySession = () => {
+    setSessionError('');
+    setIsBootLoading(true);
+    setSessionAttempt((attempt) => attempt + 1);
   };
 
   useEffect(() => {
@@ -435,39 +489,9 @@ export default function DatabaseApp() {
       setShowInstallPrompt(true);
     }
 
-    loadSessionAndProfile();
-
-    const { data } = SupabaseAuthService.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        setCurrentUser(session.user);
-        let profileResult = await ProfileService.getMyProfile();
-        if (!profileResult.success) {
-          await new Promise((resolve) => setTimeout(resolve, 1200));
-          profileResult = await ProfileService.getMyProfile();
-        }
-        if (profileResult.success) {
-          await hydrateAppShell(profileResult.data);
-        }
-      } else {
-        setCurrentUser(null);
-        setCurrentProfile(null);
-        setContacts([]);
-        setSearchResults([]);
-        inboxRequestRef.current = null;
-        setIsInboxLoading(false);
-        setInboxItems([]);
-        setActiveChat(null);
-        setStarsOpen(false);
-        setViewedPhoto(null);
-        setMessages([]);
-        setScreen('login');
-      }
-    });
-
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
-      data?.subscription?.unsubscribe();
     };
   }, []);
 
@@ -493,7 +517,6 @@ export default function DatabaseApp() {
 
       setSuccessMessage('Register berhasil. Jika email confirmation aktif, cek inbox email dulu.');
       setRegisterForm({ email: '', password: '', username: '', displayName: '' });
-      await loadSessionAndProfile();
     } catch (error) {
       setErrorMessage(`Register exception: ${error.message}`);
     } finally {
@@ -521,7 +544,6 @@ export default function DatabaseApp() {
 
       setSuccessMessage('Login berhasil');
       setLoginForm({ email: '', password: '' });
-      await loadSessionAndProfile();
     } catch (error) {
       setErrorMessage(`Login exception: ${error.message}`);
     } finally {
@@ -538,17 +560,7 @@ export default function DatabaseApp() {
       return;
     }
 
-    setCurrentUser(null);
-    setCurrentProfile(null);
-    setContacts([]);
-    setSearchResults([]);
-    inboxRequestRef.current = null;
-    setIsInboxLoading(false);
-    setInboxItems([]);
-    setActiveChat(null);
-    setMessages([]);
-    setReplyingTo(null);
-    setScreen('login');
+    resetSignedInState();
     setSuccessMessage('Logout berhasil');
   };
 
@@ -782,8 +794,15 @@ export default function DatabaseApp() {
     <div className={`screen ${screen === 'login' ? 'active' : ''}`} id="login-screen">
       <div className="auth-container">
         <div className="auth-logo"><h2>Database</h2></div>
-        {renderInstallPrompt()}
+        {isBootLoading && <p role="status" className="boot-message">Memeriksa sesi…</p>}
+        {!isBootLoading && renderInstallPrompt()}
         <Feedback />
+        {sessionError && (
+          <div className="boot-message">
+            <p role="alert">{sessionError}</p>
+            <button type="button" className="btn btn-secondary" onClick={retrySession}>Coba lagi</button>
+          </div>
+        )}
         <form className="auth-form" onSubmit={handleLogin}>
           <div className="input-group">
             <label>Email</label>
@@ -793,7 +812,7 @@ export default function DatabaseApp() {
             <label>Password</label>
             <input type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="Masukkan password" />
           </div>
-          <button type="submit" className="btn btn-primary" disabled={isAuthLoading}>{isAuthLoading ? 'Loading...' : 'Masuk'}</button>
+          <button type="submit" className="btn btn-primary" disabled={isAuthLoading || isBootLoading}>{isAuthLoading ? 'Loading...' : 'Masuk'}</button>
         </form>
         <div className="auth-footer">Belum punya akun? <a href="#" onClick={(e) => { e.preventDefault(); setScreen('register'); clearFeedback(); }}>Daftar</a></div>
       </div>
@@ -832,6 +851,8 @@ export default function DatabaseApp() {
         <div className="skeleton-list" role="status" aria-label="Memuat daftar chat">
           {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-item" />)}
         </div>
+      ) : inboxError && inboxItems.length === 0 ? (
+        <p className="empty-state" role="alert">Daftar chat gagal dimuat. Ketuk Perbarui untuk mencoba lagi.</p>
       ) : inboxItems.length === 0 ? (
         <p className="empty-state">Belum ada percakapan.</p>
       ) : (
