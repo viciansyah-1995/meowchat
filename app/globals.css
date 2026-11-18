@@ -542,3 +542,6 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .push-status-list div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; }
 .push-status-list dd { font-weight: 600; }
 .push-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.boot-message { margin: 0 0 12px; text-align: center; color: var(--text-secondary); font-size: 14px; }
+.boot-message .btn { margin-top: 8px; }
