@@ -5,6 +5,7 @@ import { formatTime } from '../lib/utils/index.js';
 import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import { FileMessage } from './file-message.js';
 import { VoiceMessage } from './voice-note.js';
+import { ExpressionMessage } from './chat-expressions.js';
 import { MessageStarButton } from './message-stars.js';
 
 export default function ChatMedia({ chatId, title, stars, userId, onClose, onViewPhoto }) {
@@ -73,6 +74,7 @@ export default function ChatMedia({ chatId, title, stars, userId, onClose, onVie
               {message.message_type === 'file' && message.file_path && (
                 <FileMessage path={message.file_path} name={message.file_name} />
               )}
+              <ExpressionMessage message={message} />
               {stars && message.content && <p className="message-content">{message.content}</p>}
               <div className="collection-message-meta">
                 <time dateTime={message.created_at}>

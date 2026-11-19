@@ -10,6 +10,8 @@ import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
+import { ExpressionMessage, RoomReaction } from './chat-expressions.js';
+import { expressionPreview } from '../lib/chat-expressions.js';
 import PushSettings from './push-settings.js';
 import InboxRefresh from './inbox-refresh.js';
 import { readLocalPreference, writeLocalPreference } from '../lib/storage/preferences.js';
@@ -62,6 +64,8 @@ export default function DatabaseApp() {
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [messageReadMap, setMessageReadMap] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
+  const [roomReaction, setRoomReaction] = useState(null);
+  const reactionPlayedRef = useRef(new Set());
   const [messageInput, setMessageInput] = useState('');
   const [appTheme, setAppTheme] = useState('system');
   const [wallpaperUrl, setWallpaperUrl] = useState(null);
@@ -158,6 +162,20 @@ export default function DatabaseApp() {
   const peerId = activeChat?.otherProfile?.id;
   const userId = currentUser?.id;
   const stars = useMessageStars(userId);
+
+  const clearRoomReaction = useCallback(() => setRoomReaction(null), []);
+  const playRoomReaction = useCallback((message) => {
+    if (message.chat_id !== chatId || message.message_type !== 'reaction'
+      || reactionPlayedRef.current.has(message.id) || document.visibilityState !== 'visible') return;
+    if (Math.abs(Date.now() - new Date(message.created_at).getTime()) > 15000) return;
+    reactionPlayedRef.current.add(message.id);
+    setRoomReaction(message);
+  }, [chatId]);
+
+  useEffect(() => {
+    setRoomReaction(null);
+    reactionPlayedRef.current = new Set();
+  }, [chatId]);
 
   const chatOpen = Boolean(chatId);
   useEffect(() => {
@@ -262,13 +280,13 @@ export default function DatabaseApp() {
     let closed = false;
     let refreshing = false;
     const markedIds = new Set();
-    const receivedIds = new Set();
+    const receivedIds = new Set(messages.map((message) => message.id));
     const isCurrent = () => !closed;
 
     const mergeMessages = (incoming) => {
       const additions = incoming.filter((message) => !receivedIds.has(message.id));
       if (!additions.length) return;
-      additions.forEach((message) => receivedIds.add(message.id));
+      additions.forEach((message) => { receivedIds.add(message.id); playRoomReaction(message); });
       const container = chatMessagesRef.current;
       if (container && container.scrollHeight - container.clientHeight - container.scrollTop <= 48) {
         followNewMessagesRef.current = true;
@@ -328,7 +346,7 @@ export default function DatabaseApp() {
       document.removeEventListener('visibilitychange', refreshVisibleChat);
       SupabaseChatService.unsubscribe(channel);
     };
-  }, [chatId, peerId, userId, loadInbox, syncReadStatus]);
+  }, [chatId, peerId, userId, loadInbox, syncReadStatus, playRoomReaction]);
 
   const resetSignedInState = useCallback(() => {
     sessionUserRef.current = null;
@@ -739,6 +757,7 @@ export default function DatabaseApp() {
 
   const getReplyPreviewText = (message) => {
     if (!message) return '';
+    if (expressionPreview(message)) return expressionPreview(message);
     if (message.message_type === 'voice') return 'Voice note';
     if (message.message_type === 'file') return message.file_name;
     return (message.content || '').trim().slice(0, 90) || 'Pesan';
@@ -866,7 +885,7 @@ export default function DatabaseApp() {
                   <span className="contact-avatar" aria-hidden="true">{title.slice(0, 1).toUpperCase()}</span>
                   <span className="contact-info">
                     <span className="contact-name">{title}</span>
-                    <span className="contact-preview">{item.lastMessage?.file_name || (item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan')}</span>
+                    <span className="contact-preview">{(item.lastMessage && expressionPreview(item.lastMessage)) || item.lastMessage?.file_name || (item.lastMessage?.message_type === 'voice' ? 'Voice note' : item.lastMessage?.content || 'Belum ada pesan')}</span>
                   </span>
                   <span className="contact-time">
                     {item.lastMessage?.created_at ? formatTime(new Date(item.lastMessage.created_at).getTime()) : ''}
@@ -1008,6 +1027,7 @@ export default function DatabaseApp() {
   const renderChat = () => (
     <div ref={chatScreenRef} className={`screen ${screen === 'chat' ? 'active' : ''}`} id="chat-screen">
       <div className="chat-container">
+        {chatId && roomReaction?.chat_id === chatId && <RoomReaction key={roomReaction.id} reaction={roomReaction} onEnd={clearRoomReaction} />}
         <header className="chat-header">
           <button type="button" className="chat-back" onClick={handleBackToChats}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1095,6 +1115,7 @@ export default function DatabaseApp() {
                   {chatId && msg.message_type === 'file' && msg.file_path && (
                     <FileMessage path={msg.file_path} name={msg.file_name} />
                   )}
+                  <ExpressionMessage message={msg} />
                   {msg.content && <p className="message-content">{msg.content}</p>}
                   <div className="message-meta">
                     <span onClick={(event) => event.stopPropagation()}>
@@ -1125,6 +1146,14 @@ export default function DatabaseApp() {
             replyTo={replyingTo?.id}
             value={messageInput}
             onChange={setMessageInput}
+            onExpressionSent={(message) => {
+              playRoomReaction(message);
+              followNewMessagesRef.current = true;
+              setMessages((previous) => previous.some((item) => item.id === message.id)
+                ? previous : [...previous, message].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)));
+              setReplyingTo(null);
+              loadInbox().catch(() => {});
+            }}
             onSendText={handleSendMessage}
             sendingText={isSendingMessage}
             onError={setErrorMessage}
