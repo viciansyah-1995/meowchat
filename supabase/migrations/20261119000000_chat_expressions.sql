@@ -23,7 +23,7 @@ alter table public.messages
         and content is null and image_url is null
       when 'reaction' then expression_key is not null and expression_key in ('love', 'kiss', 'sad')
         and content is null and image_url is null
-      when 'sticker' then expression_key is not null and expression_key in ('happy', 'love', 'sad', 'angry', 'sleepy')
+      when 'sticker' then expression_key is not null and expression_key in ('happy', 'love', 'sad', 'angry', 'sleepy', 'kiss', 'hug')
         and content is null and image_url is null
       else false
     end

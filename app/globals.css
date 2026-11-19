@@ -574,3 +574,9 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
   .room-reaction-effect span:first-child { left: 50%; top: 40%; font-size: 72px; }
   @keyframes room-expression-fade { from { opacity: .8; } to { opacity: 0; } }
 }
+
+.composer-shortcuts { display: flex; align-items: center; gap: 4px; }
+.composer-sticker-shortcut { display: grid; place-items: center; width: 44px; height: 44px; padding: 4px; border-radius: 12px; font-size: 24px; }
+.composer-sticker-shortcut[aria-expanded="true"] { background: var(--surface-accent-soft); color: var(--text-primary); }
+.composer-card > .expression-picker { border-top: 1px solid var(--divider); }
+.sticker-grid { max-height: 210px; max-height: clamp(90px, 28cqh, 210px); overflow-y: auto; overscroll-behavior-y: contain; padding: 3px; }

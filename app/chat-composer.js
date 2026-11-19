@@ -97,7 +97,7 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
       if (!result.success) throw result.error;
       if (!alive.current) return;
       expressionRef.current = null;
-      setExpressionTab(null);
+      if (type === 'reaction') setExpressionTab(null);
       setShowOptions(false);
       onExpressionSent(result.data);
       addButtonRef.current?.focus();
@@ -186,13 +186,39 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
     }
   }
 
+  const expressionPicker = expressionTab && (
+    <div id={optionsId} className="expression-picker" role="group" aria-label={expressionTab === 'reaction' ? 'Pilih reaksi' : 'Pilih stiker'}>
+      <div className="expression-picker-heading">
+        <button type="button" disabled={sendingExpression} onClick={() => {
+          setExpressionTab(null);
+          if (expressionTab === 'sticker') inputRef.current?.focus();
+          else firstOptionRef.current?.focus();
+        }}>{expressionTab === 'sticker' ? 'Keyboard' : 'Kembali'}</button>
+        <span>{expressionTab === 'reaction' ? 'Reaksi' : 'Stiker Kucing'}</span>
+      </div>
+      <div className={expressionTab === 'reaction' ? 'expression-grid reaction-grid' : 'expression-grid sticker-grid'}>
+        {(expressionTab === 'reaction' ? REACTIONS : STICKERS).map((choice, index) => (
+          <button key={choice.id} ref={index === 0 ? expressionButtonRef : null} type="button"
+            aria-label={`Kirim ${expressionTab === 'reaction' ? 'reaksi' : 'stiker'} ${choice.label}`}
+            disabled={sendingExpression} onClick={() => sendExpression(expressionTab, choice.id)}>
+            {expressionTab === 'reaction'
+              ? <span className="reaction-picker-emoji" aria-hidden="true">{choice.emoji}</span>
+              : <img src={choice.src} alt="" />}
+            <span>{choice.label}</span>
+          </button>
+        ))}
+      </div>
+      {sendingExpression && <p role="status">Mengirim…</p>}
+    </div>
+  );
+
   return (
     <div className="chat-input-area-wrapper">
       {children}
       <div className="chat-input-area">
         {pingStatus && <p className="composer-ping-status" role="status">{pingStatus}</p>}
         <div className={showOptions ? 'composer-card composer-card-options' : 'composer-card'} onKeyDown={(event) => {
-          if (event.key !== 'Escape' || !showOptions || sendingExpression) return;
+          if (event.key !== 'Escape' || (!showOptions && !expressionTab) || sendingExpression) return;
           setExpressionTab(null);
           setShowOptions(false);
           addButtonRef.current?.focus();
@@ -203,26 +229,8 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
           <VoiceComposer chatId={chatId} disabled={sendingText || sendingAttachment || sendingExpression} replyTo={replyTo} onSent={onSent}>
             {({ record, panel }) => panel || (
               <>
-                {expressionTab ? (
-                  <div id={optionsId} className="expression-picker" role="group" aria-label={expressionTab === 'reaction' ? 'Pilih reaksi' : 'Pilih stiker'}>
-                    <div className="expression-picker-heading">
-                      <button type="button" disabled={sendingExpression} onClick={() => setExpressionTab(null)}>Kembali</button>
-                      <span>{expressionTab === 'reaction' ? 'Reaksi' : 'Stiker Kucing'}</span>
-                    </div>
-                    <div className={expressionTab === 'reaction' ? 'expression-grid reaction-grid' : 'expression-grid sticker-grid'}>
-                      {(expressionTab === 'reaction' ? REACTIONS : STICKERS).map((choice, index) => (
-                        <button key={choice.id} ref={index === 0 ? expressionButtonRef : null} type="button"
-                          aria-label={`Kirim ${expressionTab === 'reaction' ? 'reaksi' : 'stiker'} ${choice.label}`}
-                          disabled={sendingExpression} onClick={() => sendExpression(expressionTab, choice.id)}>
-                          {expressionTab === 'reaction'
-                            ? <span className="reaction-picker-emoji" aria-hidden="true">{choice.emoji}</span>
-                            : <img src={choice.src} alt="" />}
-                          <span>{choice.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                    {sendingExpression && <p role="status">Mengirim…</p>}
-                  </div>
+                {expressionTab === 'reaction' ? (
+                  expressionPicker
                 ) : showOptions ? (
                   <div className="composer-options" id={optionsId} role="group" aria-label="Opsi chat">
                     <button ref={firstOptionRef} type="button" onClick={() => openPicker(galleryRef)}>Galeri</button>
@@ -230,7 +238,7 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
                     <button type="button" onClick={() => openPicker(fileRef)}>File</button>
                     <button type="button" onClick={() => { setShowOptions(false); record(); }}>Voice note</button>
                     <button type="button" onClick={() => setExpressionTab('reaction')}>Reaksi</button>
-                    <button type="button" onClick={() => setExpressionTab('sticker')}>Stiker</button>
+                    <button type="button" onClick={() => { setShowOptions(false); setExpressionTab('sticker'); }}>Stiker</button>
                     <button type="button" className="composer-ping-option" onClick={sendPing} disabled={sendingPing}>PING!</button>
                   </div>
                 ) : attachment ? (
@@ -244,6 +252,7 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
                   <ComposerTextarea inputRef={inputRef} value={value} onChange={onChange} replying={Boolean(replyTo)} />
                 )}
                 <div className="composer-toolbar">
+                  <div className="composer-shortcuts">
                   <button ref={addButtonRef} type="button" className="chat-btn chat-btn-attach"
                     aria-label="Tambah lampiran" aria-expanded={showOptions} aria-controls={showOptions ? optionsId : undefined}
                     disabled={sendingText || sendingAttachment || sendingExpression || Boolean(attachment)}
@@ -258,15 +267,44 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
                     }}>
                     <span aria-hidden="true">{showOptions ? '×' : '+'}</span>
                   </button>
+                  {!showOptions && expressionTab !== 'reaction' && (
+                    <button type="button" className="chat-btn composer-sticker-shortcut"
+                      aria-label={expressionTab === 'sticker' ? 'Kembali ke keyboard' : 'Buka stiker'}
+                      aria-expanded={expressionTab === 'sticker'} aria-controls={expressionTab === 'sticker' ? optionsId : undefined}
+                      disabled={sendingText || sendingAttachment || sendingExpression || Boolean(attachment)}
+                      onClick={() => {
+                        if (expressionTab === 'sticker') {
+                          setExpressionTab(null);
+                          inputRef.current?.focus();
+                        } else {
+                          inputRef.current?.blur();
+                          setExpressionTab('sticker');
+                        }
+                      }}>
+                      {expressionTab === 'sticker' ? (
+                        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                          <rect x="2" y="5" width="20" height="14" rx="3" />
+                          <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10" />
+                        </svg>
+                      ) : (
+                        <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M20 13V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v11a3 3 0 0 0 3 3h7z" />
+                          <path d="M20 13h-4a3 3 0 0 0-3 3v4M8 8h.01M15 8h.01M8 12c1.5 1.5 3.5 1.5 5 0" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                  </div>
                   {!showOptions && (
                     <button type="button" className="chat-btn chat-btn-send"
                       aria-label={attachment ? 'Kirim lampiran' : 'Kirim pesan'}
-                      disabled={sendingText || sendingAttachment || (!attachment && !value.trim())}
+                      disabled={sendingText || sendingAttachment || sendingExpression || (!attachment && !value.trim())}
                       onClick={attachment ? sendAttachment : onSendText}>
                       <span aria-hidden="true">{sendingText || sendingAttachment ? '…' : '↑'}</span>
                     </button>
                   )}
                 </div>
+                {expressionTab === 'sticker' && expressionPicker}
               </>
             )}
           </VoiceComposer>
