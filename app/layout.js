@@ -1,6 +1,6 @@
 import './globals.css';
 import { Poppins } from 'next/font/google';
-import SwReset from './sw-reset';
+import Script from 'next/script';
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -42,7 +42,7 @@ export default function RootLayout({ children }) {
         <meta name="apple-mobile-web-app-title" content="Database" />
       </head>
       <body className={poppins.className} suppressHydrationWarning>
-        <SwReset />
+        <Script src="/pwa-startup.js" strategy="beforeInteractive" />
         {children}
       </body>
     </html>

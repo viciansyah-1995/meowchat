@@ -14,5 +14,7 @@
       "type": "image/jpeg",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "id": "/",
+  "scope": "/"
 }

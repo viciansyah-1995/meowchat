@@ -3,7 +3,18 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.delete('meowtrack-chat-v2').then(() => self.clients.claim()));
+  event.waitUntil((async () => {
+    // Retire pages cached by earlier releases. Authentication stays in browser storage.
+    try {
+      const names = await caches.keys();
+      await Promise.all(names.filter((name) => /^(meowtrack-chat|database-chat)-v/.test(name))
+        .map((name) => caches.delete(name)));
+    } catch {
+      // Cache storage can be unavailable in a restricted browser.
+    } finally {
+      await self.clients.claim();
+    }
+  })());
 });
 
 self.addEventListener('push', (event) => {
