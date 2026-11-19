@@ -3,6 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { callPush } from '../lib/services/push.client.js';
 import SupabaseChatService from '../lib/services/chat.service.supabase.js';
+import { REACTIONS, STICKERS } from '../lib/chat-expressions.js';
 import { VoiceComposer } from './voice-note.js';
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -40,8 +41,12 @@ function ComposerTextarea({ inputRef, value, onChange, replying }) {
   );
 }
 
-export default function ChatComposer({ chatId, replyTo, value, onChange, onSendText, sendingText, onSent, onError, children }) {
+export default function ChatComposer({ chatId, replyTo, value, onChange, onSendText, sendingText, onExpressionSent, onSent, onError, children }) {
   const [showOptions, setShowOptions] = useState(false);
+  const [expressionTab, setExpressionTab] = useState(null);
+  const [sendingExpression, setSendingExpression] = useState(false);
+  const expressionRef = useRef(null);
+  const expressionButtonRef = useRef(null);
   const [pingStatus, setPingStatus] = useState('');
   const [sendingPing, setSendingPing] = useState(false);
   const pingRef = useRef(false);
@@ -68,14 +73,41 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
   }, [previewUrl]);
 
   useEffect(() => {
-    if (showOptions) firstOptionRef.current?.focus();
-  }, [showOptions]);
+    if (expressionTab) expressionButtonRef.current?.focus();
+    else if (showOptions) firstOptionRef.current?.focus();
+  }, [showOptions, expressionTab]);
 
   useEffect(() => {
     if (!pingStatus || sendingPing) return;
     const timer = window.setTimeout(() => setPingStatus(''), 6000);
     return () => window.clearTimeout(timer);
   }, [pingStatus, sendingPing]);
+
+  async function sendExpression(type, key) {
+    if (expressionRef.current?.sending) return;
+    const previous = expressionRef.current;
+    const attempt = previous && previous.type === type && previous.key === key
+      ? previous : { type, key, id: crypto.randomUUID() };
+    attempt.sending = true;
+    expressionRef.current = attempt;
+    setSendingExpression(true);
+    onError('');
+    try {
+      const result = await SupabaseChatService.sendExpression(chatId, type, key, attempt.id, replyTo);
+      if (!result.success) throw result.error;
+      if (!alive.current) return;
+      expressionRef.current = null;
+      setExpressionTab(null);
+      setShowOptions(false);
+      onExpressionSent(result.data);
+      addButtonRef.current?.focus();
+    } catch {
+      if (alive.current) onError('Ekspresi gagal dikirim. Coba lagi.');
+    } finally {
+      attempt.sending = false;
+      if (alive.current) setSendingExpression(false);
+    }
+  }
 
   async function sendPing() {
     if (pingRef.current) return;
@@ -160,22 +192,45 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
       <div className="chat-input-area">
         {pingStatus && <p className="composer-ping-status" role="status">{pingStatus}</p>}
         <div className={showOptions ? 'composer-card composer-card-options' : 'composer-card'} onKeyDown={(event) => {
-          if (event.key !== 'Escape' || !showOptions) return;
+          if (event.key !== 'Escape' || !showOptions || sendingExpression) return;
+          setExpressionTab(null);
           setShowOptions(false);
           addButtonRef.current?.focus();
         }}>
           <input ref={galleryRef} type="file" accept="image/*" onChange={(event) => pickAttachment(event, 'image')} hidden />
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={(event) => pickAttachment(event, 'image')} hidden />
           <input ref={fileRef} type="file" onChange={(event) => pickAttachment(event, 'file')} hidden />
-          <VoiceComposer chatId={chatId} disabled={sendingText || sendingAttachment} replyTo={replyTo} onSent={onSent}>
+          <VoiceComposer chatId={chatId} disabled={sendingText || sendingAttachment || sendingExpression} replyTo={replyTo} onSent={onSent}>
             {({ record, panel }) => panel || (
               <>
-                {showOptions ? (
+                {expressionTab ? (
+                  <div id={optionsId} className="expression-picker" role="group" aria-label={expressionTab === 'reaction' ? 'Pilih reaksi' : 'Pilih stiker'}>
+                    <div className="expression-picker-heading">
+                      <button type="button" disabled={sendingExpression} onClick={() => setExpressionTab(null)}>Kembali</button>
+                      <span>{expressionTab === 'reaction' ? 'Reaksi' : 'Stiker Kucing'}</span>
+                    </div>
+                    <div className={expressionTab === 'reaction' ? 'expression-grid reaction-grid' : 'expression-grid sticker-grid'}>
+                      {(expressionTab === 'reaction' ? REACTIONS : STICKERS).map((choice, index) => (
+                        <button key={choice.id} ref={index === 0 ? expressionButtonRef : null} type="button"
+                          aria-label={`Kirim ${expressionTab === 'reaction' ? 'reaksi' : 'stiker'} ${choice.label}`}
+                          disabled={sendingExpression} onClick={() => sendExpression(expressionTab, choice.id)}>
+                          {expressionTab === 'reaction'
+                            ? <span className="reaction-picker-emoji" aria-hidden="true">{choice.emoji}</span>
+                            : <img src={choice.src} alt="" />}
+                          <span>{choice.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {sendingExpression && <p role="status">Mengirim…</p>}
+                  </div>
+                ) : showOptions ? (
                   <div className="composer-options" id={optionsId} role="group" aria-label="Opsi chat">
                     <button ref={firstOptionRef} type="button" onClick={() => openPicker(galleryRef)}>Galeri</button>
                     <button type="button" onClick={() => openPicker(cameraRef)}>Kamera</button>
                     <button type="button" onClick={() => openPicker(fileRef)}>File</button>
                     <button type="button" onClick={() => { setShowOptions(false); record(); }}>Voice note</button>
+                    <button type="button" onClick={() => setExpressionTab('reaction')}>Reaksi</button>
+                    <button type="button" onClick={() => setExpressionTab('sticker')}>Stiker</button>
                     <button type="button" className="composer-ping-option" onClick={sendPing} disabled={sendingPing}>PING!</button>
                   </div>
                 ) : attachment ? (
@@ -191,12 +246,13 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
                 <div className="composer-toolbar">
                   <button ref={addButtonRef} type="button" className="chat-btn chat-btn-attach"
                     aria-label="Tambah lampiran" aria-expanded={showOptions} aria-controls={showOptions ? optionsId : undefined}
-                    disabled={sendingText || sendingAttachment || Boolean(attachment)}
+                    disabled={sendingText || sendingAttachment || sendingExpression || Boolean(attachment)}
                     onMouseDown={(event) => {
                       if (document.activeElement === inputRef.current) event.preventDefault();
                     }}
                     onClick={() => {
                       inputRef.current?.blur();
+                      setExpressionTab(null);
                       setShowOptions(!showOptions);
                       addButtonRef.current?.focus();
                     }}>

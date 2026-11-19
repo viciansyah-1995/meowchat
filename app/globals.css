@@ -545,3 +545,32 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 
 .boot-message { margin: 0 0 12px; text-align: center; color: var(--text-secondary); font-size: 14px; }
 .boot-message .btn { margin-top: 8px; }
+
+.chat-container { position: relative; }
+.expression-picker { padding: 8px; min-width: 0; }
+.expression-picker-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.expression-picker button { min-height: 44px; border: 1px solid var(--divider); border-radius: 12px; padding: 4px 8px; background: var(--surface-primary); color: var(--text-primary); font: 600 12px var(--font-main); cursor: pointer; }
+.expression-picker button:disabled { opacity: .5; cursor: wait; }
+.expression-picker button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.expression-grid { display: grid; gap: 6px; }
+.reaction-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sticker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.expression-grid button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; min-width: 0; }
+.expression-grid img { display: block; width: 100%; max-width: 64px; height: 56px; object-fit: contain; }
+.reaction-picker-emoji { font-size: 30px; }
+.message-sticker { display: block; width: 160px; max-width: 100%; height: 160px; object-fit: contain; }
+.message-reaction { display: inline-block; font-size: 44px; line-height: 1.4; }
+.room-reaction-effect { position: absolute; z-index: 101; inset: 0; overflow: hidden; pointer-events: none; }
+.room-reaction-effect span { position: absolute; left: var(--particle-x); top: var(--particle-y); font-size: var(--particle-size); opacity: 0; animation: room-expression-burst 1900ms var(--particle-delay) ease-out both; will-change: transform, opacity; }
+@keyframes room-expression-burst {
+  0% { transform: translate(-50%, 50px) scale(.2) rotate(0); opacity: 0; }
+  18% { opacity: .95; }
+  60% { opacity: .85; }
+  100% { transform: translate(-50%, -100px) scale(1.25) rotate(var(--particle-rotate)); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-reaction-effect span { animation: room-expression-fade 900ms ease-out both; will-change: opacity; }
+  .room-reaction-effect span:not(:first-child) { display: none; }
+  .room-reaction-effect span:first-child { left: 50%; top: 40%; font-size: 72px; }
+  @keyframes room-expression-fade { from { opacity: .8; } to { opacity: 0; } }
+}
