@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useImperativeHandle, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { callPush } from '../lib/services/push.client.js';
 import SupabaseChatService from '../lib/services/chat.service.supabase.js';
 import { REACTIONS, STICKERS } from '../lib/chat-expressions.js';
@@ -41,7 +42,7 @@ function ComposerTextarea({ inputRef, value, onChange, replying }) {
   );
 }
 
-export default function ChatComposer({ chatId, replyTo, value, onChange, onSendText, sendingText, onExpressionSent, onSent, onError, children }) {
+export default function ChatComposer({ chatId, focusReplyRef, replyTo, value, onChange, onSendText, sendingText, onExpressionSent, onSent, onError, children }) {
   const [showOptions, setShowOptions] = useState(false);
   const [expressionTab, setExpressionTab] = useState(null);
   const [sendingExpression, setSendingExpression] = useState(false);
@@ -62,6 +63,13 @@ export default function ChatComposer({ chatId, replyTo, value, onChange, onSendT
   const alive = useRef(false);
   const optionsId = useId();
   const previewUrl = attachment?.previewUrl;
+  useImperativeHandle(focusReplyRef, () => ({
+    focus() {
+      // Keep focus inside the original tap gesture so iOS can open its keyboard.
+      flushSync(() => { setShowOptions(false); setExpressionTab(null); });
+      inputRef.current?.focus({ preventScroll: true });
+    },
+  }), []);
 
   useEffect(() => {
     alive.current = true;

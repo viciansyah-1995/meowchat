@@ -231,7 +231,7 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .file-message .btn { padding: 6px 10px; font-size: 13px; }
 .empty-state { text-align: center; padding: 48px 24px; color: var(--text-secondary); }
 .empty-state h3 { margin-bottom: 8px; color: var(--text-primary); }
-.bottom-nav { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--surface-accent-border); background: var(--surface-primary); backdrop-filter: blur(16px); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); gap: 10px; }
+.bottom-nav { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--surface-accent-border); background: var(--surface-primary); backdrop-filter: blur(16px); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); gap: 10px; }
 .mobile-bottom-nav { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; width: 100%; max-width: 480px; box-shadow: 0 -14px 28px rgba(41,54,129,0.10); }
 .bottom-nav-item { border: none; background: transparent; padding: 10px 8px; cursor: pointer; color: var(--text-secondary); font-family: var(--font-main); font-weight: 600; border-radius: 18px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .bottom-nav-item.active { color: var(--accent-text); background: linear-gradient(180deg, var(--surface-accent-border), var(--surface-accent-soft)); }
@@ -580,3 +580,123 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .composer-sticker-shortcut[aria-expanded="true"] { background: var(--surface-accent-soft); color: var(--text-primary); }
 .composer-card > .expression-picker { border-top: 1px solid var(--divider); }
 .sticker-grid { max-height: 210px; max-height: clamp(90px, 28cqh, 210px); overflow-y: auto; overscroll-behavior-y: contain; padding: 3px; }
+
+/* Shared music collection. Notes and cards inherit the selected application theme. */
+.playlist-page { padding: 20px 16px 32px; min-width: 0; }
+.playlist-intro { margin-bottom: 22px; }
+.playlist-intro h2, .playlist-hero h2 { font-size: 27px; margin: 6px 0 10px; overflow-wrap: anywhere; }
+.playlist-intro > p:last-child, .playlist-hero > p, .playlist-empty p { color: var(--text-secondary); line-height: 1.6; }
+.playlist-eyebrow { color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: .13em; }
+.playlist-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.playlist-actions .btn { width: auto; min-height: 44px; padding: 10px 14px; }
+.playlist-back { background: none; border: none; color: var(--text-primary); font: inherit; cursor: pointer; min-height: 44px; text-align: left; }
+.playlist-empty { padding: 32px 14px; text-align: center; border: 1px dashed var(--surface-accent-border); border-radius: 24px; background: var(--surface-accent-soft); }
+.playlist-empty > span { display: block; font-size: 52px; margin-bottom: 14px; }
+.playlist-empty h3 { line-height: 1.5; margin-bottom: 10px; }
+.playlist-empty small, .playlist-form small, .playlist-byline { color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.playlist-collection, .playlist-tracks { display: grid; gap: 14px; margin-top: 20px; }
+.playlist-cover { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 16px; border: 1px solid var(--surface-accent-border); border-radius: 22px; background: var(--surface-primary); color: var(--text-primary); text-align: left; cursor: pointer; font: inherit; }
+.playlist-art { display: grid; place-items: center; width: 72px; height: 80px; flex-shrink: 0; border-radius: 18px; background: linear-gradient(140deg, var(--surface-accent-soft), var(--bg-chat)); border: 1px solid var(--surface-accent-border); color: var(--text-primary); font-size: 38px; }
+.playlist-cover-copy { display: grid; min-width: 0; gap: 7px; overflow-wrap: anywhere; }
+.playlist-cover-copy > span { font-size: 13px; color: var(--text-secondary); }
+.playlist-cover-copy small { font-size: 11px; }
+.playlist-hero { padding: 20px; background: var(--surface-accent-soft); border: 1px solid var(--surface-accent-border); border-radius: 24px; }
+.playlist-hero .playlist-art { margin-bottom: 18px; }
+.playlist-caption { font-style: italic; margin: 10px 0; }
+.playlist-form { display: grid; gap: 14px; padding: 18px; margin: 18px 0; border-radius: 22px; background: var(--surface-primary); border: 1px solid var(--surface-accent-border); }
+.playlist-form h3 { font-size: 17px; }
+.playlist-form label { display: grid; gap: 7px; font-size: 13px; font-weight: 600; min-width: 0; }
+.playlist-form input, .playlist-form select, .playlist-form textarea { min-width: 0; width: 100%; border: 1px solid var(--divider); border-radius: 12px; background: var(--surface-secondary); color: var(--text-primary); padding: 12px; font: 16px var(--font-main); }
+.playlist-form textarea { resize: vertical; min-height: 110px; max-height: 260px; }
+.playlist-form-row { display: grid; gap: 14px; }
+.playlist-track { padding: 18px; border: 1px solid var(--surface-accent-border); border-radius: 22px; background: var(--surface-primary); min-width: 0; overflow-wrap: anywhere; }
+.playlist-track-heading { display: flex; align-items: center; gap: 12px; }
+.playlist-track-heading h3 { font-size: 17px; margin-bottom: 4px; }
+.playlist-track-heading p { color: var(--text-secondary); font-size: 13px; }
+.playlist-song-icon { display: grid; place-items: center; flex-shrink: 0; width: 46px; height: 48px; border-radius: 13px; background: var(--surface-accent-soft); font-size: 26px; }
+.playlist-memory { padding: 16px; margin: 16px 0 10px; border-left: 3px solid var(--accent); border-radius: 0 14px 14px 0; background: var(--surface-accent-soft); }
+.playlist-memory > span { font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.playlist-memory p { white-space: pre-wrap; line-height: 1.7; font-size: 15px; margin-top: 9px; }
+.playlist-listen { display: inline-flex; align-items: center; min-height: 44px; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+.playlist-track-tools, .playlist-delete { display: flex; gap: 12px; flex-wrap: wrap; }
+.playlist-track-tools button, .playlist-delete button { background: none; border: none; color: var(--text-secondary); text-decoration: underline; cursor: pointer; min-height: 44px; font: 12px var(--font-main); }
+.playlist-delete { padding: 12px; border: 1px solid var(--divider); border-radius: 12px; }
+.playlist-delete p { width: 100%; font-size: 13px; }
+.playlist-error { padding: 12px; border: 1px solid var(--divider); border-radius: 12px; color: var(--text-primary); background: var(--surface-accent-soft); line-height: 1.6; }
+.playlist-status { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
+.playlist-page button:focus-visible, .playlist-page a:focus-visible, .playlist-form :is(input, select, textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.bottom-nav-item { min-width: 0; padding-inline: 2px; }
+.bottom-nav { gap: 3px; padding-inline: 10px; }
+
+.bottom-nav-item.active { color: var(--text-primary); }
+
+/* Compact music rows inspired by a playlist, with each story one tap away. */
+.playlist-page { container-type: inline-size; }
+.playlist-table-head { display: grid; grid-template-columns: 20px minmax(0, 1fr) 70px 14px; gap: 10px; align-items: center; margin-top: 24px; padding: 12px 6px; border-bottom: 1px solid var(--divider); font-size: 11px; color: var(--text-secondary); }
+.playlist-tracks { display: block; margin-top: 0; }
+.playlist-track { padding: 0; border: 0; border-bottom: 1px solid var(--divider); border-radius: 0; background: transparent; }
+.playlist-track-row { display: grid; grid-template-columns: 20px 44px minmax(0, 1fr) 70px 14px; align-items: center; gap: 10px; padding: 15px 6px; list-style: none; cursor: pointer; border-radius: 12px; }
+.playlist-track-row::-webkit-details-marker { display: none; }
+.playlist-track-row:hover, .playlist-track[open] > summary { background: var(--surface-accent-soft); }
+.playlist-track-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.playlist-track-number { color: var(--text-secondary); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+.playlist-song-icon { width: 44px; height: 48px; border-radius: 7px; background: linear-gradient(140deg, hsl(var(--song-hue) 40% 32%), hsl(calc(var(--song-hue) + 45) 42% 15%)); color: #fff; border: 1px solid #ffffff24; font-size: 25px; }
+.playlist-song-copy { display: grid; gap: 4px; min-width: 0; }
+.playlist-song-copy strong { font-size: 14px; font-weight: 600; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.playlist-song-copy > span { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-song-copy > small { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-date { font-size: 11px; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+.playlist-date small { display: block; margin-top: 5px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70px; }
+.playlist-row-chevron { color: var(--text-secondary); font-size: 17px; transition: transform .15s; }
+.playlist-track[open] .playlist-row-chevron { transform: rotate(180deg); }
+.playlist-track-story { padding: 0 10px 16px 36px; }
+.playlist-memory { margin-top: 8px; }
+.playlist-collection { gap: 0; border-top: 1px solid var(--divider); }
+.playlist-cover { background: transparent; border: 0; border-bottom: 1px solid var(--divider); border-radius: 0; padding: 18px 4px; }
+.playlist-cover:hover { background: var(--surface-accent-soft); }
+.playlist-cover .playlist-art { width: 58px; height: 62px; border-radius: 10px; font-size: 30px; }
+@container (max-width: 350px) {
+  .playlist-date { display: none; }
+  .playlist-table-head { grid-template-columns: 20px minmax(0, 1fr) 14px; }
+  .playlist-track-row { grid-template-columns: 20px 40px minmax(0, 1fr) 14px; gap: 8px; padding-inline: 2px; }
+  .playlist-song-icon { width: 40px; height: 44px; }
+  .playlist-track-story { padding-left: 8px; padding-right: 4px; }
+}
+@media (prefers-reduced-motion: reduce) { .playlist-row-chevron { transition: none; } }
+.playlist-hero { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 14px; padding: 18px; }
+.playlist-hero .playlist-art { grid-column: 1; grid-row: 1 / span 3; width: 64px; height: 74px; margin: 0; font-size: 34px; }
+.playlist-hero > .playlist-eyebrow { grid-column: 2; font-size: 9px; letter-spacing: .08em; margin: 0; }
+.playlist-hero h2 { grid-column: 2; margin: 0; font-size: 23px; }
+.playlist-hero > p { grid-column: 2; margin: 0; font-size: 13px; }
+.playlist-hero > .playlist-caption { grid-column: 1 / -1; margin: 8px 0 4px; font-size: 13px; }
+.playlist-hero > button { grid-column: 1 / -1; justify-self: start; min-height: 44px; width: auto; padding: 9px 14px; font-size: 13px; }
+.message-content a, .moment-caption a { color: inherit; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.message-content a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.chat-header-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 50%; }
+.chat-header-actions .chat-back { min-height: 36px; padding: 6px 8px; }
+.chat-header > .chat-contact-info { flex: 1; }
+.moments-scroll { padding: 18px 16px 36px; }
+.moments-intro { padding: 12px 2px; }
+.moments-intro > span { font-size: 30px; }
+.moments-intro h2 { font-size: 23px; line-height: 1.4; margin: 10px 0; }
+.moments-intro p { color: var(--text-secondary); line-height: 1.6; }
+.moment-place-results { list-style: none; display: grid; gap: 6px; padding: 0; max-height: 240px; overflow-y: auto; }
+.moment-place-results button { text-align: left; width: 100%; padding: 12px; border: 1px solid var(--divider); border-radius: 12px; background: var(--surface-secondary); color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.moment-picked { padding: 12px; border-radius: 12px; background: var(--surface-accent-soft); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.moment-preview { display: block; width: 100%; max-height: 230px; object-fit: contain; border-radius: 14px; margin-bottom: 8px; }
+.moments-timeline { display: grid; gap: 20px; padding: 10px 0 12px 12px; margin-top: 16px; border-left: 2px solid var(--surface-accent-border); }
+.moment-card { padding: 14px; min-width: 0; border: 1px solid var(--divider); border-radius: 18px; background: var(--surface-primary); }
+.moment-card-heading { display: flex; gap: 8px; margin-bottom: 14px; }
+.moment-card-heading h3 { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.moment-card-heading p { color: var(--text-secondary); font-size: 11px; margin-top: 5px; }
+.moment-photo-button { display: block; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; }
+.moment-photo-button img { display: block; width: 100%; max-height: 380px; object-fit: cover; border-radius: 12px; }
+.moment-caption { white-space: pre-wrap; line-height: 1.7; overflow-wrap: anywhere; margin-top: 14px; font-size: 14px; }
+.moments-dialog button:focus-visible, .moments-dialog a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 360px) { .chat-header { gap: 7px; padding-inline: 8px; } .chat-header-actions { gap: 1px; } .chat-header-actions .chat-back { font-size: 11px; padding-inline: 5px; } }
+
+.replying-label { color: var(--text-primary); }
+@media (max-width: 400px) {
+  .chat-header > .chat-back:has(.chat-back-label) { width: 44px; min-width: 44px; justify-content: center; padding-inline: 0; }
+  .chat-back-label { display: none; }
+}

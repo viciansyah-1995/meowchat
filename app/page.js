@@ -10,6 +10,7 @@ import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
+import Playlists from './playlists.js';
 import { ExpressionMessage, RoomReaction } from './chat-expressions.js';
 import { expressionPreview } from '../lib/chat-expressions.js';
 import PushSettings from './push-settings.js';
@@ -18,11 +19,14 @@ import { readLocalPreference, writeLocalPreference } from '../lib/storage/prefer
 import { disablePush } from '../lib/services/push.client.js';
 import ChatPhotoViewer from './chat-photo-viewer.js';
 import ChatMedia from './chat-media.js';
+import MessageText from './message-text.js';
+import ChatMoments from './chat-moments.js';
 import { MessageStarButton, useMessageStars } from './message-stars.js';
 import { FileMessage } from './file-message.js';
 import { VoiceMessage } from './voice-note.js';
 
 const NAV_ITEMS = [
+  { key: 'playlists', label: 'Playlist', icon: '🎵' },
   { key: 'chats', label: 'Chat', icon: '💬' },
   { key: 'contacts', label: 'Contact', icon: '👥' },
   { key: 'profile', label: 'Pengaturan', icon: '⚙️' },
@@ -43,7 +47,7 @@ const CHAT_REFRESH_INTERVAL_MS = 5000;
 
 export default function DatabaseApp() {
   const [screen, setScreen] = useState('login');
-  const [activeTab, setActiveTab] = useState('chats');
+  const [activeTab, setActiveTab] = useState('playlists');
   const [currentUser, setCurrentUser] = useState(null);
   const [currentProfile, setCurrentProfile] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -69,6 +73,8 @@ export default function DatabaseApp() {
   const [messageInput, setMessageInput] = useState('');
   const [appTheme, setAppTheme] = useState('system');
   const [wallpaperUrl, setWallpaperUrl] = useState(null);
+  const composerFocusRef = useRef(null);
+  const [momentsChatId, setMomentsChatId] = useState(null);
   const [mediaChatId, setMediaChatId] = useState(null);
   const [starsOpen, setStarsOpen] = useState(false);
   const [viewedPhoto, setViewedPhoto] = useState(null);
@@ -363,6 +369,7 @@ export default function DatabaseApp() {
     setActiveChat(null);
     setStarsOpen(false);
     setMediaChatId(null);
+    setMomentsChatId(null);
     setViewedPhoto(null);
     setMessages([]);
     setReplyingTo(null);
@@ -417,7 +424,7 @@ export default function DatabaseApp() {
           bio: result.data.bio || '',
         });
         setScreen('app');
-        setActiveTab('chats');
+        setActiveTab('playlists');
         loadContacts().catch(() => {});
         loadInbox();
       } catch {
@@ -997,13 +1004,14 @@ export default function DatabaseApp() {
         <div className="header mobile-header"><h1>Database</h1></div>
         <Feedback />
         <InboxRefresh active={screen === 'app' && activeTab === 'chats'} blocked={isInboxLoading} onRefresh={refreshInbox}>
+          {activeTab === 'playlists' && userId && <Playlists key={userId} userId={userId} rooms={inboxItems} roomsLoading={isInboxLoading} roomsError={inboxError} onRefreshRooms={refreshInbox} onChat={room => openDirectChat(room.otherProfile || room.fallbackProfile, room.chat)} />}
           {activeTab === 'chats' && renderChatsTab()}
           {activeTab === 'contacts' && renderContactsTab()}
           {activeTab === 'profile' && renderProfileTab()}
         </InboxRefresh>
         <div className="bottom-nav mobile-bottom-nav">
           {NAV_ITEMS.map((item) => (
-            <button key={item.key} className={`bottom-nav-item ${activeTab === item.key ? 'active' : ''}`} onClick={() => setActiveTab(item.key)}>
+            <button key={item.key} className={`bottom-nav-item ${activeTab === item.key ? 'active' : ''}`} aria-current={activeTab === item.key ? 'page' : undefined} onClick={() => setActiveTab(item.key)}>
               <span className="bottom-nav-icon" aria-hidden="true">{item.icon}</span>
               <span className="bottom-nav-label">{item.label}</span>
             </button>
@@ -1018,6 +1026,7 @@ export default function DatabaseApp() {
     setActiveTab('chats');
     setActiveChat(null);
     setMediaChatId(null);
+    setMomentsChatId(null);
     setMessageReadMap({});
     setReplyingTo(null);
     clearFeedback();
@@ -1029,11 +1038,11 @@ export default function DatabaseApp() {
       <div className="chat-container">
         {chatId && roomReaction?.chat_id === chatId && <RoomReaction key={roomReaction.id} reaction={roomReaction} onEnd={clearRoomReaction} />}
         <header className="chat-header">
-          <button type="button" className="chat-back" onClick={handleBackToChats}>
+          <button type="button" className="chat-back" aria-label="Daftar pesan" onClick={handleBackToChats}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m12 19-7-7 7-7M5 12h14" />
             </svg>
-            Daftar pesan
+            <span className="chat-back-label">Daftar pesan</span>
           </button>
           <div className="chat-contact-info">
             <h3>{activeChatTitle}</h3>
@@ -1050,6 +1059,7 @@ export default function DatabaseApp() {
                 event.currentTarget.focus({ preventScroll: true });
                 setMediaChatId(chatId);
               }}>Media</button>
+              <button type="button" className="chat-back chat-moments-open" onClick={() => setMomentsChatId(chatId)}>Momen</button>
             </div>
           )}
         </header>
@@ -1089,7 +1099,11 @@ export default function DatabaseApp() {
               const reads = messageReadMap[msg.id] || [];
               const readByOther = reads.some((r) => r.profile_id === peerId);
               return (
-                <div key={msg.id} className={`message ${isOwn ? 'message-own' : 'message-other'}`} onClick={() => setReplyingTo(msg)}>
+                <div key={msg.id} className={`message ${isOwn ? 'message-own' : 'message-other'}`} onClick={(event) => {
+                  if (event.target.closest('a,button,input,audio,video')) return;
+                  setReplyingTo(msg);
+                  composerFocusRef.current?.focus();
+                }}>
                   {msg.reply_to_message_id ? (() => {
                     const repliedMessage = messages.find((item) => item.id === msg.reply_to_message_id);
                     if (!repliedMessage) return null;
@@ -1116,7 +1130,7 @@ export default function DatabaseApp() {
                     <FileMessage path={msg.file_path} name={msg.file_name} />
                   )}
                   <ExpressionMessage message={msg} />
-                  {msg.content && <p className="message-content">{msg.content}</p>}
+                  {msg.content && <p className="message-content"><MessageText text={msg.content} /></p>}
                   <div className="message-meta">
                     <span onClick={(event) => event.stopPropagation()}>
                       <MessageStarButton messageId={msg.id} stars={stars} />
@@ -1142,6 +1156,7 @@ export default function DatabaseApp() {
         {!isChatOpening && chatId && (
           <ChatComposer
             key={chatId}
+            focusReplyRef={composerFocusRef}
             chatId={chatId}
             replyTo={replyingTo?.id}
             value={messageInput}
@@ -1183,6 +1198,7 @@ export default function DatabaseApp() {
       {renderRegister()}
       {renderAppHome()}
       {renderChat()}
+      {chatId && momentsChatId === chatId && <ChatMoments key={chatId} chatId={chatId} userId={userId} title={activeChatTitle} onClose={() => setMomentsChatId(null)} onViewPhoto={src => setViewedPhoto({ chatId, src })} />}
       {chatId && mediaChatId === chatId && (
         <ChatMedia key={chatId} chatId={chatId} title={activeChatTitle}
           onClose={() => setMediaChatId(null)} onViewPhoto={(src) => setViewedPhoto({ chatId, src })} />
