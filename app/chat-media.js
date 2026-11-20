@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatTime } from '../lib/utils/index.js';
 import SupabaseChatService from '../lib/services/chat.service.supabase.js';
+import MessageText from './message-text.js';
 import { FileMessage } from './file-message.js';
 import { VoiceMessage } from './voice-note.js';
 import { ExpressionMessage } from './chat-expressions.js';
@@ -75,7 +76,7 @@ export default function ChatMedia({ chatId, title, stars, userId, onClose, onVie
                 <FileMessage path={message.file_path} name={message.file_name} />
               )}
               <ExpressionMessage message={message} />
-              {stars && message.content && <p className="message-content">{message.content}</p>}
+              {stars && message.content && <p className="message-content"><MessageText text={message.content} /></p>}
               <div className="collection-message-meta">
                 <time dateTime={message.created_at}>
                   {new Date(message.created_at).toLocaleDateString('id-ID')} · {formatTime(new Date(message.created_at).getTime())}

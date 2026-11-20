@@ -670,3 +670,33 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .playlist-hero > p { grid-column: 2; margin: 0; font-size: 13px; }
 .playlist-hero > .playlist-caption { grid-column: 1 / -1; margin: 8px 0 4px; font-size: 13px; }
 .playlist-hero > button { grid-column: 1 / -1; justify-self: start; min-height: 44px; width: auto; padding: 9px 14px; font-size: 13px; }
+.message-content a, .moment-caption a { color: inherit; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.message-content a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.chat-header-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 50%; }
+.chat-header-actions .chat-back { min-height: 36px; padding: 6px 8px; }
+.chat-header > .chat-contact-info { flex: 1; }
+.moments-scroll { padding: 18px 16px 36px; }
+.moments-intro { padding: 12px 2px; }
+.moments-intro > span { font-size: 30px; }
+.moments-intro h2 { font-size: 23px; line-height: 1.4; margin: 10px 0; }
+.moments-intro p { color: var(--text-secondary); line-height: 1.6; }
+.moment-place-results { list-style: none; display: grid; gap: 6px; padding: 0; max-height: 240px; overflow-y: auto; }
+.moment-place-results button { text-align: left; width: 100%; padding: 12px; border: 1px solid var(--divider); border-radius: 12px; background: var(--surface-secondary); color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.moment-picked { padding: 12px; border-radius: 12px; background: var(--surface-accent-soft); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.moment-preview { display: block; width: 100%; max-height: 230px; object-fit: contain; border-radius: 14px; margin-bottom: 8px; }
+.moments-timeline { display: grid; gap: 20px; padding: 10px 0 12px 12px; margin-top: 16px; border-left: 2px solid var(--surface-accent-border); }
+.moment-card { padding: 14px; min-width: 0; border: 1px solid var(--divider); border-radius: 18px; background: var(--surface-primary); }
+.moment-card-heading { display: flex; gap: 8px; margin-bottom: 14px; }
+.moment-card-heading h3 { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.moment-card-heading p { color: var(--text-secondary); font-size: 11px; margin-top: 5px; }
+.moment-photo-button { display: block; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; }
+.moment-photo-button img { display: block; width: 100%; max-height: 380px; object-fit: cover; border-radius: 12px; }
+.moment-caption { white-space: pre-wrap; line-height: 1.7; overflow-wrap: anywhere; margin-top: 14px; font-size: 14px; }
+.moments-dialog button:focus-visible, .moments-dialog a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 360px) { .chat-header { gap: 7px; padding-inline: 8px; } .chat-header-actions { gap: 1px; } .chat-header-actions .chat-back { font-size: 11px; padding-inline: 5px; } }
+
+.replying-label { color: var(--text-primary); }
+@media (max-width: 400px) {
+  .chat-header > .chat-back:has(.chat-back-label) { width: 44px; min-width: 44px; justify-content: center; padding-inline: 0; }
+  .chat-back-label { display: none; }
+}
