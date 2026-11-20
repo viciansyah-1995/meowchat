@@ -10,6 +10,7 @@ import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
+import Playlists from './playlists.js';
 import { ExpressionMessage, RoomReaction } from './chat-expressions.js';
 import { expressionPreview } from '../lib/chat-expressions.js';
 import PushSettings from './push-settings.js';
@@ -23,6 +24,7 @@ import { FileMessage } from './file-message.js';
 import { VoiceMessage } from './voice-note.js';
 
 const NAV_ITEMS = [
+  { key: 'playlists', label: 'Playlist', icon: '🎵' },
   { key: 'chats', label: 'Chat', icon: '💬' },
   { key: 'contacts', label: 'Contact', icon: '👥' },
   { key: 'profile', label: 'Pengaturan', icon: '⚙️' },
@@ -43,7 +45,7 @@ const CHAT_REFRESH_INTERVAL_MS = 5000;
 
 export default function DatabaseApp() {
   const [screen, setScreen] = useState('login');
-  const [activeTab, setActiveTab] = useState('chats');
+  const [activeTab, setActiveTab] = useState('playlists');
   const [currentUser, setCurrentUser] = useState(null);
   const [currentProfile, setCurrentProfile] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -417,7 +419,7 @@ export default function DatabaseApp() {
           bio: result.data.bio || '',
         });
         setScreen('app');
-        setActiveTab('chats');
+        setActiveTab('playlists');
         loadContacts().catch(() => {});
         loadInbox();
       } catch {
@@ -997,13 +999,14 @@ export default function DatabaseApp() {
         <div className="header mobile-header"><h1>Database</h1></div>
         <Feedback />
         <InboxRefresh active={screen === 'app' && activeTab === 'chats'} blocked={isInboxLoading} onRefresh={refreshInbox}>
+          {activeTab === 'playlists' && userId && <Playlists key={userId} userId={userId} rooms={inboxItems} roomsLoading={isInboxLoading} roomsError={inboxError} onRefreshRooms={refreshInbox} onChat={room => openDirectChat(room.otherProfile || room.fallbackProfile, room.chat)} />}
           {activeTab === 'chats' && renderChatsTab()}
           {activeTab === 'contacts' && renderContactsTab()}
           {activeTab === 'profile' && renderProfileTab()}
         </InboxRefresh>
         <div className="bottom-nav mobile-bottom-nav">
           {NAV_ITEMS.map((item) => (
-            <button key={item.key} className={`bottom-nav-item ${activeTab === item.key ? 'active' : ''}`} onClick={() => setActiveTab(item.key)}>
+            <button key={item.key} className={`bottom-nav-item ${activeTab === item.key ? 'active' : ''}`} aria-current={activeTab === item.key ? 'page' : undefined} onClick={() => setActiveTab(item.key)}>
               <span className="bottom-nav-icon" aria-hidden="true">{item.icon}</span>
               <span className="bottom-nav-label">{item.label}</span>
             </button>

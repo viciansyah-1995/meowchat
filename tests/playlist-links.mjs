@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const source = fs.readFileSync(new URL('../lib/playlist-links.js', import.meta.url));
+const { spotifyTrackId, spotifyTrackUrl } = await import(`data:text/javascript;base64,${source.toString('base64')}`);
+const id = '4iV5W9uYEdYUVa79Axb7Rh';
+assert.equal(spotifyTrackId(`https://open.spotify.com/track/${id}?si=test`), id);
+assert.equal(spotifyTrackId(` https://open.spotify.com/intl-id/track/${id} `), id);
+assert.equal(spotifyTrackUrl(id), `https://open.spotify.com/track/${id}`);
+for (const url of ['javascript:alert(1)',`https://evil.test/track/${id}`,`https://open.spotify.com.evil.test/track/${id}`,`http://open.spotify.com/track/${id}`,`https://open.spotify.com/playlist/${id}`,'https://open.spotify.com/track/invalid',`https://user@open.spotify.com/track/${id}`]) assert.equal(spotifyTrackId(url), null, url);
+console.log('PASS: Spotify track links, locales, normalization and untrusted URLs');
