@@ -10,6 +10,8 @@ import InboxService from '../lib/services/inbox.service.supabase.js';
 import { formatTime } from '../lib/utils/index.js';
 import getSupabaseClient, { getSupabaseEnvStatus } from '../lib/supabase/client.js';
 import ChatComposer from './chat-composer.js';
+import PausedChatComposer from './paused-chat-composer.js';
+import { CHAT_COMPOSER_DISABLED } from '../lib/chat-availability.js';
 import Playlists from './playlists.js';
 import { ExpressionMessage, RoomReaction } from './chat-expressions.js';
 import { expressionPreview } from '../lib/chat-expressions.js';
@@ -740,6 +742,7 @@ export default function DatabaseApp() {
   };
 
   const handleSendMessage = async () => {
+    if (CHAT_COMPOSER_DISABLED) return;
     clearFeedback();
     if (!activeChat?.chat?.id || !messageInput.trim() || isSendingMessage) return;
 
@@ -1093,13 +1096,14 @@ export default function DatabaseApp() {
               {isLoadingOlder ? 'Memuat riwayat…' : 'Muat pesan sebelumnya'}
             </button>
           )}
-          {messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>Kirim pesan untuk memulai percakapan</p></div> : (
+          {messages.length === 0 ? <div className="empty-state" style={{ padding: '24px' }}><p>{CHAT_COMPOSER_DISABLED ? 'Belum ada pesan di percakapan ini.' : 'Kirim pesan untuk memulai percakapan'}</p></div> : (
             messages.map((msg) => {
               const isOwn = msg.sender_id === currentUser?.id;
               const reads = messageReadMap[msg.id] || [];
               const readByOther = reads.some((r) => r.profile_id === peerId);
               return (
                 <div key={msg.id} className={`message ${isOwn ? 'message-own' : 'message-other'}`} onClick={(event) => {
+                  if (CHAT_COMPOSER_DISABLED) return;
                   if (event.target.closest('a,button,input,audio,video')) return;
                   setReplyingTo(msg);
                   composerFocusRef.current?.focus();
@@ -1154,6 +1158,7 @@ export default function DatabaseApp() {
         )}
         </div>
         {!isChatOpening && chatId && (
+          CHAT_COMPOSER_DISABLED ? <PausedChatComposer value={messageInput} /> :
           <ChatComposer
             key={chatId}
             focusReplyRef={composerFocusRef}
