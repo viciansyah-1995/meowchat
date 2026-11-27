@@ -698,7 +698,6 @@ body { background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary
 .replying-label { color: var(--text-primary); }
 .composer-card-paused { opacity: .65; }
 .composer-card-paused .composer-textarea { cursor: not-allowed; }
-.composer-paused-notice { margin: 8px 4px 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 @media (max-width: 400px) {
   .chat-header > .chat-back:has(.chat-back-label) { width: 44px; min-width: 44px; justify-content: center; padding-inline: 0; }
   .chat-back-label { display: none; }
